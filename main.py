@@ -30,7 +30,7 @@ matriz_personalizada_guardada = [list(f) for f in MATRIZ_PERSONALIZADA_DEFECTO]
 
 # Variables globales de estado
 raiz = None
-imagen_original = imagen_suavizada = imagen_reducida = imagen_directa = None
+imagen_original = imagen_reducida = imagen_directa = None
 mascara_actual = datos_actuales = None
 ruta_actual = ''
 pixel_seleccionado = None
@@ -46,9 +46,25 @@ paneles, fotos_tk, celdas_matriz = {}, {}, []
 lbl_res_orig = lbl_res_red = lbl_pix_tot = lbl_pct_red = None
 lbl_cfg_masc = lbl_cfg_saltos = lbl_t_proc = None
 
-# Referencia a ventana de cálculo paso a paso
+# Referencia y control de sincronización de la ventana de cálculo paso a paso
 ventana_calculo_actual = None
 callback_actualizar_calculo = None
+callback_actualizar_salto = None
+_aplicando_desde_calculo = False
+
+
+def cerrar_calculo_seguro():
+    """Cierra la ventana de cálculo paso a paso y limpia callbacks y referencias."""
+    global ventana_calculo_actual, callback_actualizar_calculo, callback_actualizar_salto
+    if ventana_calculo_actual is not None:
+        try:
+            if ventana_calculo_actual.winfo_exists():
+                ventana_calculo_actual.destroy()
+        except Exception:
+            pass
+    ventana_calculo_actual = None
+    callback_actualizar_calculo = None
+    callback_actualizar_salto = None
 
 
 def validar_decimal(texto):
@@ -97,7 +113,18 @@ def cargar_imagen(ruta=None):
             nombre_imagen.set(Path(ruta).name)
         if lbl_pixel_info:
             lbl_pixel_info.config(text=f'Píxel seleccionado: fila {pixel_seleccionado[0]}, columna {pixel_seleccionado[1]}')
+
+        # Si la ventana de cálculo estaba abierta, recrearla para sincronizar límites y vecindad con la nueva imagen
+        calculo_estaba_abierto = (
+            ventana_calculo_actual is not None and ventana_calculo_actual.winfo_exists()
+        )
+        if calculo_estaba_abierto:
+            cerrar_calculo_seguro()
+
         procesar()
+
+        if calculo_estaba_abierto and imagen_original is not None:
+            mostrar_calculo()
     except Exception as e:
         messagebox.showerror('Error al cargar imagen', str(e))
 
@@ -175,15 +202,32 @@ def mascara_desde_interfaz():
 def aplicar_preset(preset):
     """Carga pesos predefinidos en la cuadrícula personalizada."""
     tam = int(tamano_mascara.get())
-    p = [[1, 2, 1], [2, 4, 2], [1, 2, 1]] if preset == 'gauss' and tam == 3 else None
+    if preset == 'gauss':
+        if tam == 3:
+            v = np.array([1, 2, 1], dtype=int)
+        elif tam == 5:
+            v = np.array([1, 4, 6, 4, 1], dtype=int)
+        elif tam == 7:
+            v = np.array([1, 6, 15, 20, 15, 6, 1], dtype=int)
+        else:
+            v = np.ones(tam, dtype=int)
+        mat = np.outer(v, v)
+    elif preset == 'centro':
+        mat = np.ones((tam, tam), dtype=int)
+        mat[tam // 2, tam // 2] = 5
+    else:  # 'unos'
+        mat = np.ones((tam, tam), dtype=int)
+
     for f in range(tam):
         for c in range(tam):
-            val = '1' if preset == 'unos' else ('5' if (f == tam // 2 and c == tam // 2) else '1')
-            if p:
-                val = str(p[f][c])
             celdas_matriz[f][c].delete(0, 'end')
-            celdas_matriz[f][c].insert(0, val)
+            celdas_matriz[f][c].insert(0, str(int(mat[f, c])))
     procesar()
+
+    if (ventana_calculo_actual is not None 
+            and ventana_calculo_actual.winfo_exists() 
+            and callback_actualizar_calculo is not None):
+        callback_actualizar_calculo(pixel_seleccionado[0], pixel_seleccionado[1])
 
 
 def actualizar_mascara(*args):
@@ -192,20 +236,46 @@ def actualizar_mascara(*args):
     if not marco_celdas:
         return
     tipo, tam = tipo_mascara.get(), int(tamano_mascara.get())
+
+    # Sincronización segura con la ventana de cálculo si está abierta (evita desajustes de matrices)
+    calculo_estaba_abierto = (
+        ventana_calculo_actual is not None 
+        and ventana_calculo_actual.winfo_exists()
+        and not _aplicando_desde_calculo
+    )
+    if calculo_estaba_abierto:
+        cerrar_calculo_seguro()
+
     for w in marco_celdas.winfo_children():
         w.destroy()
     celdas_matriz = []
-    w_col = 5 if tam == 3 else (4 if tam == 5 else 3)
     vcmd_dec = (raiz.register(validar_decimal), '%P') if raiz else None
+
+    # Parámetros visuales específicos según tamaño para garantizar que 7x7 quepa completamente
+    if tam == 3:
+        px, py = 2, 2
+        w_col_pers, f_pers = 5, ('Consolas', 10, 'bold')
+        w_col_ro, f_ro = 6, ('Consolas', 9)
+        fmt = lambda v: f'{v:.4f}'
+    elif tam == 5:
+        px, py = 1, 1
+        w_col_pers, f_pers = 4, ('Consolas', 9, 'bold')
+        w_col_ro, f_ro = 5, ('Consolas', 8)
+        fmt = lambda v: f'{v:.3f}'
+    else:  # 7x7
+        px, py = 1, 1
+        w_col_pers, f_pers = 4, ('Consolas', 8, 'bold')
+        w_col_ro, f_ro = 4, ('Consolas', 7)
+        fmt = lambda v: f'{v:.3f}'
 
     if tipo == 'Personalizada':
         for f in range(tam):
             fila_w = []
             for c in range(tam):
                 kwargs = {'validate': 'key', 'validatecommand': vcmd_dec} if vcmd_dec else {}
-                e = tk.Entry(marco_celdas, width=w_col, justify='center', font=('Consolas', 10, 'bold'),
+                e = tk.Entry(marco_celdas, width=w_col_pers, justify='center', font=f_pers,
                              relief='solid', bd=1, **kwargs)
-                e.grid(row=f, column=c, padx=2, pady=2)
+                e.grid(row=f, column=c, padx=px, pady=py)
                 if f < len(matriz_personalizada_guardada) and c < len(matriz_personalizada_guardada[f]):
                     val = str(matriz_personalizada_guardada[f][c])
                 else:
@@ -222,15 +292,18 @@ def actualizar_mascara(*args):
         for f in range(tam):
             fila_w = []
             for c in range(tam):
-                e = tk.Entry(marco_celdas, width=w_col + 2, justify='center', font=('Consolas', 9),
+                e = tk.Entry(marco_celdas, width=w_col_ro, justify='center', font=f_ro,
                              relief='solid', bd=1, bg='#f1f5f9', fg=SECUNDARIO)
-                e.grid(row=f, column=c, padx=2, pady=2)
-                e.insert(0, f'{m[f, c]:.4f}')
+                e.grid(row=f, column=c, padx=px, pady=py)
+                e.insert(0, fmt(m[f, c]))
                 e.configure(state='readonly')
                 fila_w.append(e)
             celdas_matriz.append(fila_w)
         explicacion_mascara.set(f'Pesos normalizados ({tipo}): suma = {m.sum():.4f}')
     procesar()
+
+    if calculo_estaba_abierto and imagen_original is not None:
+        mostrar_calculo()
 
 
 def actualizar_reduccion(*args):
@@ -247,7 +320,7 @@ def actualizar_reduccion(*args):
     imagen_reducida = aplicar_convolucion(imagen_original, masc, sy, sx)
     imagen_directa = reducir_sin_suavizado(imagen_original, sy, sx)
     t_ms = (time.perf_counter() - t0) * 1000
-    datos_actuales = calcular_datos(imagen_original, imagen_suavizada, imagen_reducida, t_ms)
+    datos_actuales = calcular_datos(imagen_original, imagen_reducida, t_ms)
 
     actualizar_panel('directa')
     actualizar_panel('reducida')
@@ -257,6 +330,10 @@ def actualizar_reduccion(*args):
         nw, nh = imagen_reducida.shape[1], imagen_reducida.shape[0]
         pct = datos_actuales['reduccion']
         estado.set(f'[OK] Salto {sx}x{sy} -> {nw}x{nh} px | Reducción: {pct:.2f}% píxeles ({t_ms:.1f} ms)')
+
+    # Sincronización ligera del indicador de muestreo si la ventana de cálculo está abierta
+    if callback_actualizar_salto and ventana_calculo_actual and ventana_calculo_actual.winfo_exists():
+        callback_actualizar_salto()
 
 
 def actualizar_resumen_resultados(datos, sx, sy):
@@ -281,17 +358,15 @@ def actualizar_resumen_resultados(datos, sx, sy):
 
 
 def procesar():
-    """Punto único de procesamiento: suavizado completo, reducción con saltos y CSV."""
-    global mascara_actual, imagen_suavizada
+    """Punto único de procesamiento: reducción con saltos, reducción directa y CSV."""
+    global mascara_actual
     if imagen_original is None:
         if estado:
             estado.set('Cargue una fotografía para comenzar.')
         return
     try:
         mascara_actual = mascara_desde_interfaz()
-        imagen_suavizada = aplicar_convolucion(imagen_original, mascara_actual, 1, 1)
         actualizar_panel('original')
-        actualizar_panel('suavizada')
         actualizar_reduccion()
     except ValueError as ve:
         if estado:
@@ -317,8 +392,8 @@ def procesar():
 
 def actualizar_panel(clave):
     """Muestra la imagen adaptada al panel manteniendo la relación de aspecto."""
-    img = {'original': imagen_original, 'suavizada': imagen_suavizada,
-           'directa': imagen_directa, 'reducida': imagen_reducida}.get(clave)
+    img = {'original': imagen_original, 'directa': imagen_directa,
+           'reducida': imagen_reducida}.get(clave)
     if img is None or imagen_original is None or clave not in paneles:
         return
     lienzo, info = paneles[clave]
@@ -330,6 +405,7 @@ def actualizar_panel(clave):
     vw, vh = geom['vw'], geom['vh']
     cx, cy = geom['cx'], geom['cy']
     foto = Image.fromarray(img)
+    # Ambas imágenes reducidas emplean el mismo criterio de escala e interpolación visual (Lanczos)
     vista = foto.resize((vw, vh), Image.Resampling.LANCZOS)
     foto_tk = ImageTk.PhotoImage(vista)
     fotos_tk[clave] = foto_tk
@@ -356,9 +432,10 @@ def dibujar_marca_pixel(lienzo, pos, geom):
     """Dibuja una pequeña marca visual sobre el píxel seleccionado en la foto original."""
     fila, col = pos
     ox, oy = geom['ox'], geom['oy']
-    factor = geom['factor']
-    px = ox + int((col + 0.5) * factor)
-    py = oy + int((fila + 0.5) * factor)
+    vw, vh = geom['vw'], geom['vh']
+    orig_h, orig_w = imagen_original.shape[:2]
+    px = ox + int((col + 0.5) * vw / orig_w)
+    py = oy + int((fila + 0.5) * vh / orig_h)
     lienzo.delete('marca_pixel')
     lienzo.create_oval(px - 4, py - 4, px + 4, py + 4, outline=ROJO, width=2, tag='marca_pixel')
     lienzo.create_line(px - 7, py, px + 7, py, fill=ROJO, width=1, tag='marca_pixel')
@@ -388,16 +465,48 @@ def manejar_clic_original(event):
 
 def mostrar_calculo():
     """Ventana interactiva Cálculo paso a paso — Convolución."""
-    global ventana_calculo_actual, callback_actualizar_calculo
+    global ventana_calculo_actual, callback_actualizar_calculo, callback_actualizar_salto
     if imagen_original is None or mascara_actual is None:
         messagebox.showinfo('Aviso', 'Cargue y procese una imagen primero.')
         return
 
+    # Si ya existe una ventana abierta, traer al frente y enfocar sin duplicar
+    if ventana_calculo_actual and ventana_calculo_actual.winfo_exists():
+        ventana_calculo_actual.lift()
+        ventana_calculo_actual.focus_force()
+        return
+
+    tam = mascara_actual.shape[0]
+    es_pers = (tipo_mascara.get() == 'Personalizada')
+
+    # Adaptación dinámica de geometría, anchos de celdas y fuentes según tamaño de máscara
+    if tam == 3:
+        v_w, v_h = 960, 620
+        min_w, min_h = 800, 520
+        w_pix, w_pes, w_prod = 5, 6, 6
+        f_mat = ('Consolas', 9)
+    elif tam == 5:
+        v_w, v_h = 1120, 680
+        min_w, min_h = 900, 560
+        w_pix, w_pes, w_prod = 4, 5, 5
+        f_mat = ('Consolas', 8)
+    else:  # 7x7
+        v_w, v_h = 1240, 750
+        min_w, min_h = 980, 600
+        w_pix, w_pes, w_prod = 3, 4, 4
+        f_mat = ('Consolas', 7)
+
+    scr_w = raiz.winfo_screenwidth() if raiz else 1366
+    scr_h = raiz.winfo_screenheight() if raiz else 768
+    v_w = min(v_w, max(scr_w - 40, 780))
+    v_h = min(v_h, max(scr_h - 80, 500))
+
     v = tk.Toplevel(raiz)
-    v.title('Cálculo paso a paso — Convolución')
-    v.geometry('920x600')
-    v.minsize(780, 520)
+    v.title(f'Cálculo paso a paso — Convolución ({tam}x{tam})')
+    v.geometry(f'{v_w}x{v_h}')
+    v.minsize(min_w, min_h)
     v.configure(bg=FONDO)
+    v.protocol("WM_DELETE_WINDOW", cerrar_calculo_seguro)
     ventana_calculo_actual = v
 
     top = tk.Frame(v, bg=BLANCO, padx=10, pady=6, relief='solid', bd=1)
@@ -437,39 +546,72 @@ def mostrar_calculo():
     # Indicador de relación con el salto (submuestreo)
     lbl_salto_rel = tk.Label(body, text='', font=('Segoe UI', 9, 'bold'), bg='#f8fafc',
                              relief='solid', bd=1, padx=6, pady=4)
-    lbl_salto_rel.pack(fill='x', pady=(0, 6))
+    lbl_salto_rel.pack(fill='x', pady=(0, 4))
 
     tk.Label(body, text='Los valores editados se utilizan únicamente para practicar el cálculo manual.',
-             font=('Segoe UI', 8, 'italic'), bg=BLANCO, fg=SECUNDARIO).pack(anchor='center', pady=(0, 4))
+             font=('Segoe UI', 8, 'italic'), bg=BLANCO, fg=SECUNDARIO).pack(anchor='center', pady=(0, 2))
 
-    m_row = tk.Frame(body, bg=BLANCO)
-    m_row.pack(anchor='center', pady=4)
+    # Contenedor desplazable para garantizar accesibilidad completa en 3x3, 5x5 y 7x7
+    contenedor_canvas = tk.Frame(body, bg=BLANCO)
+    contenedor_canvas.pack(fill='both', expand=True, pady=2)
+
+    canvas_mat = tk.Canvas(contenedor_canvas, bg=BLANCO, highlightthickness=0)
+    h_scroll = ttk.Scrollbar(contenedor_canvas, orient='horizontal', command=canvas_mat.xview)
+    canvas_mat.configure(xscrollcommand=h_scroll.set)
+
+    m_row = tk.Frame(canvas_mat, bg=BLANCO)
+    canvas_win = canvas_mat.create_window((0, 0), window=m_row, anchor='nw')
+
+    def ajustar_scroll_matrices(ev=None):
+        canvas_mat.update_idletasks()
+        bbox = canvas_mat.bbox('all')
+        if bbox:
+            canvas_mat.configure(scrollregion=bbox)
+            req_w = m_row.winfo_reqwidth()
+            can_w = canvas_mat.winfo_width()
+            if req_w < can_w:
+                canvas_mat.coords(canvas_win, (can_w - req_w) // 2, 0)
+                h_scroll.pack_forget()
+            else:
+                canvas_mat.coords(canvas_win, 0, 0)
+                h_scroll.pack(fill='x', side='bottom')
+
+    m_row.bind('<Configure>', ajustar_scroll_matrices)
+    canvas_mat.bind('<Configure>', ajustar_scroll_matrices)
+    canvas_mat.pack(fill='both', expand=True)
 
     cuadros = []
-    for tit, col in (('1. Píxeles (I) [Editable]', TEXTO), ('2. Máscara (W)', AZUL), ('3. Productos (I x W)', VERDE)):
-        g = tk.Frame(m_row, bg='#f8fafc', relief='solid', bd=1, padx=6, pady=6)
-        g.pack(side='left', padx=6)
+    titulos = [
+        ('1. Píxeles (I) [Editable]', TEXTO),
+        ('2. Máscara (W) [Personalizada]' if es_pers else '2. Máscara (W) [Normalizada]', AZUL),
+        ('3. Productos (I x W_conv)', VERDE)
+    ]
+    for tit, col in titulos:
+        g = tk.Frame(m_row, bg='#f8fafc', relief='solid', bd=1, padx=4, pady=4)
+        g.pack(side='left', padx=4)
         tk.Label(g, text=tit, font=('Segoe UI', 8, 'bold'), bg='#f8fafc', fg=col).pack(pady=(0, 2))
         f_sub = tk.Frame(g, bg='#f8fafc')
         f_sub.pack()
         cuadros.append(f_sub)
         if len(cuadros) < 3:
-            tk.Label(m_row, text='x' if len(cuadros) == 1 else '=', font=('Segoe UI', 16, 'bold'),
+            tk.Label(m_row, text='x' if len(cuadros) == 1 else '=', font=('Segoe UI', 14, 'bold'),
                      bg=BLANCO, fg=SECUNDARIO).pack(side='left', padx=2)
 
     lbl_sum = tk.Label(body, text='SUMA PONDERADA = -', font=('Segoe UI', 10, 'bold'), bg=BLANCO, fg=VERDE)
-    lbl_sum.pack(pady=4)
-    lbl_exp = tk.Label(body, text='', font=('Segoe UI', 8), bg=BLANCO, justify='center')
-    lbl_exp.pack()
+    lbl_sum.pack(pady=2)
 
-    tam = mascara_actual.shape[0]
+    lbl_pesos_info = tk.Label(body, text='', font=('Segoe UI', 8, 'bold'), bg=BLANCO, fg=AZUL)
+    lbl_pesos_info.pack(pady=1)
+
+    lbl_exp = tk.Label(body, text='', font=('Segoe UI', 8), bg=BLANCO, justify='center')
+    lbl_exp.pack(pady=1)
+
     entradas_pix, entradas_pes, etiquetas_prod = [], [], []
-    es_pers = (tipo_mascara.get() == 'Personalizada')
 
     for i in range(tam):
         f_pix, f_pes, f_prod = [], [], []
         for j in range(tam):
-            ep = tk.Entry(cuadros[0], width=5, justify='center', font=('Consolas', 9), relief='solid', bd=1,
+            ep = tk.Entry(cuadros[0], width=w_pix, justify='center', font=f_mat, relief='solid', bd=1,
                           validate='key', validatecommand=vcmd_pix)
             ep.grid(row=i, column=j, padx=1, pady=1)
             ep.bind('<KeyRelease>', lambda ev: recalcular())
@@ -477,7 +619,7 @@ def mostrar_calculo():
             f_pix.append(ep)
 
             # Matriz de pesos: editable solo en Personalizada
-            ew = tk.Entry(cuadros[1], width=6, justify='center', font=('Consolas', 9), relief='solid', bd=1, fg=AZUL,
+            ew = tk.Entry(cuadros[1], width=w_pes, justify='center', font=f_mat, relief='solid', bd=1, fg=AZUL,
                           validate='key', validatecommand=vcmd_dec)
             ew.grid(row=i, column=j, padx=1, pady=1)
             if es_pers:
@@ -487,7 +629,7 @@ def mostrar_calculo():
                 ew.configure(state='readonly')
             f_pes.append(ew)
 
-            lp = tk.Label(cuadros[2], text='0.0', width=6, font=('Consolas', 9), relief='solid', bd=1, bg=BLANCO, fg=VERDE)
+            lp = tk.Label(cuadros[2], text='0.0', width=w_prod, font=f_mat, relief='solid', bd=1, bg=BLANCO, fg=VERDE)
             lp.grid(row=i, column=j, padx=1, pady=1)
             f_prod.append(lp)
         entradas_pix.append(f_pix)
@@ -507,36 +649,21 @@ def mostrar_calculo():
             for j in range(tam):
                 entradas_pix[i][j].delete(0, 'end')
                 entradas_pix[i][j].insert(0, str(int(reg[i, j, ch])))
-                if not es_pers:
+                if es_pers:
+                    entradas_pes[i][j].delete(0, 'end')
+                    if i < len(matriz_personalizada_guardada) and j < len(matriz_personalizada_guardada[i]):
+                        v_peso = matriz_personalizada_guardada[i][j]
+                    else:
+                        v_peso = 1.0
+                    entradas_pes[i][j].insert(0, str(v_peso))
+                else:
                     entradas_pes[i][j].configure(state='normal')
-                entradas_pes[i][j].delete(0, 'end')
-                entradas_pes[i][j].insert(0, f'{pes[i, j]:.4f}')
-                if not es_pers:
+                    entradas_pes[i][j].delete(0, 'end')
+                    entradas_pes[i][j].insert(0, f'{pes[i, j]:.4f}')
                     entradas_pes[i][j].configure(state='readonly')
         recalcular()
 
     def recalcular():
-        suma = 0.0
-        for i in range(tam):
-            for j in range(tam):
-                try:
-                    val_i = float(entradas_pix[i][j].get().strip().replace(',', '.'))
-                except ValueError:
-                    val_i = 0.0
-                if es_pers:
-                    try:
-                        txt_w = entradas_pes[i][j].get().strip().replace(',', '.')
-                        val_w = float(txt_w) if txt_w else 0.0
-                    except ValueError:
-                        val_w = 0.0
-                else:
-                    # En Promedio y Gaussiana usar la precisión completa float64 de NumPy
-                    val_w = float(pesos_completos[i, j])
-
-                prod = val_i * val_w
-                suma += prod
-                etiquetas_prod[i][j].config(text=f'{prod:.2f}')
-        salida_clip = int(np.clip(np.rint(suma), 0, 255))
         f, c = f_var.get(), c_var.get()
         sx, sy = int(salto_horizontal.get()), int(salto_vertical.get())
         muestreado = es_posicion_muestreada(f, c, sy, sx)
@@ -552,8 +679,87 @@ def mostrar_calculo():
                 fg='#b45309', bg='#fefce8'
             )
 
-        lbl_sum.config(text=f'Suma ponderada (S) = {suma:.4f}  ->  Píxel final = {salida_clip}')
-        lbl_exp.config(text='Procedimiento: cada intensidad I se multiplica por su peso W, la suma de los productos da el píxel resultante.')
+        # 1. Validación de intensidades de píxeles
+        matriz_i = np.zeros((tam, tam), dtype=np.float64)
+        for i in range(tam):
+            for j in range(tam):
+                txt_i = entradas_pix[i][j].get().strip().replace(',', '.')
+                if not txt_i:
+                    lbl_sum.config(text='[Edición pendiente: complete las intensidades de los píxeles]', fg='#b45309')
+                    lbl_exp.config(text='Ingrese números de 0 a 255 para cada celda de la vecindad.')
+                    return
+                try:
+                    val_i = float(txt_i)
+                except ValueError:
+                    lbl_sum.config(text=f'[Valor inválido "{txt_i}" en píxel ({i+1}, {j+1})]', fg=ROJO)
+                    return
+                if not (0 <= val_i <= 255):
+                    lbl_sum.config(text=f'[Píxel ({i+1}, {j+1}) fuera de rango 0-255]', fg=ROJO)
+                    return
+                matriz_i[i, j] = val_i
+
+        # 2. Obtención y normalización estricta de la máscara
+        if es_pers:
+            matriz_w_cruda = np.zeros((tam, tam), dtype=np.float64)
+            for i in range(tam):
+                for j in range(tam):
+                    txt_w = entradas_pes[i][j].get().strip().replace(',', '.')
+                    if not txt_w:
+                        lbl_sum.config(text='[Edición pendiente: complete los pesos de la máscara]', fg='#b45309')
+                        lbl_exp.config(text='Ingrese números finitos no negativos en las celdas de la máscara.')
+                        for fi in range(tam):
+                            for cj in range(tam):
+                                etiquetas_prod[fi][cj].config(text='-')
+                        return
+                    try:
+                        val_w = float(txt_w)
+                    except ValueError:
+                        lbl_sum.config(text=f'[Peso no numérico "{txt_w}" en celda ({i+1}, {j+1})]', fg=ROJO)
+                        return
+                    if not np.isfinite(val_w) or val_w < 0:
+                        lbl_sum.config(text=f'[Peso inválido ({val_w}) en celda ({i+1}, {j+1}): debe ser finito y no negativo]', fg=ROJO)
+                        return
+                    matriz_w_cruda[i, j] = val_w
+
+            suma_cruda = float(matriz_w_cruda.sum())
+            if suma_cruda <= 0 or not np.any(matriz_w_cruda > 0):
+                lbl_sum.config(text='[Error: La suma de los pesos debe ser mayor a 0 (al menos un peso positivo)]', fg=ROJO)
+                lbl_pesos_info.config(text='Suma de pesos crudos = 0.0 | No es posible normalizar')
+                for fi in range(tam):
+                    for cj in range(tam):
+                        etiquetas_prod[fi][cj].config(text='-')
+                return
+
+            # Normalización idéntica al procesamiento global
+            masc_norm = crear_mascara('Personalizada', tam, matriz_w_cruda)
+            lbl_pesos_info.config(
+                text=f'Pesos: suma original = {suma_cruda:.4f}  |  suma normalizada = {masc_norm.sum():.4f}'
+            )
+            # Convolución matemática: invertir los pesos normalizados una sola vez
+            pesos_efectivos = masc_norm[::-1, ::-1]
+        else:
+            # En Promedio y Gaussiana usar la precisión completa float64 de NumPy (simétrica)
+            pesos_efectivos = pesos_completos
+            lbl_pesos_info.config(
+                text=f'Pesos normalizados ({tipo_mascara.get()} {tam}x{tam}): suma = {pesos_efectivos.sum():.4f}'
+            )
+
+        # 3. Multiplicación y cálculo final
+        productos = matriz_i * pesos_efectivos
+        suma = float(productos.sum())
+        salida_clip = int(np.clip(np.rint(suma), 0, 255))
+
+        for i in range(tam):
+            for j in range(tam):
+                etiquetas_prod[i][j].config(text=f'{productos[i, j]:.2f}')
+
+        lbl_sum.config(
+            text=f'Suma ponderada (S) = {suma:.4f}  ->  Píxel final = {salida_clip}',
+            fg=VERDE
+        )
+        lbl_exp.config(
+            text='Procedimiento: cada intensidad I se multiplica por su peso normalizado e invertido; la suma redondeada da el píxel final.'
+        )
 
     def aplicar_mascara_desde_calculo():
         if not es_pers:
@@ -563,12 +769,12 @@ def mostrar_calculo():
         for i in range(tam):
             fila = []
             for j in range(tam):
-                txt = entradas_pes[i][j].get().strip()
+                txt = entradas_pes[i][j].get().strip().replace(',', '.')
                 if not txt:
                     messagebox.showerror('Pesos inválidos', f'La celda de peso ({i+1}, {j+1}) está vacía.')
                     return
                 try:
-                    val = float(txt.replace(',', '.'))
+                    val = float(txt)
                 except ValueError:
                     messagebox.showerror('Pesos inválidos', f'El valor "{txt}" en ({i+1}, {j+1}) no es un número válido.')
                     return
@@ -586,17 +792,39 @@ def mostrar_calculo():
         if not messagebox.askyesno('Confirmar aplicación', '¿Desea aplicar estos pesos como máscara personalizada global para toda la imagen?'):
             return
 
-        matriz_original_w = arr_w[::-1, ::-1]
-        establecer_matriz_codigo(matriz_original_w.tolist())
-        procesar()
-        messagebox.showinfo('Máscara aplicada', 'Los pesos modificados se normalizaron y se aplicaron a la imagen completa.')
+        global _aplicando_desde_calculo
+        try:
+            _aplicando_desde_calculo = True
+            # Establecer directamente los pesos originales definidos por el usuario (sin invertir aquí)
+            establecer_matriz_codigo(arr_w.tolist())
+            procesar()
+            recalcular()
+            messagebox.showinfo('Máscara aplicada', 'Los pesos modificados se normalizaron y se aplicaron a la imagen completa.')
+        finally:
+            _aplicando_desde_calculo = False
 
     def actualizar_desde_externo(nueva_f, nueva_c):
         f_var.set(nueva_f)
         c_var.set(nueva_c)
         cargar_vecindad()
 
+    def actualizar_indicador_salto():
+        f, c = f_var.get(), c_var.get()
+        sx, sy = int(salto_horizontal.get()), int(salto_vertical.get())
+        muestreado = es_posicion_muestreada(f, c, sy, sx)
+        if muestreado:
+            lbl_salto_rel.config(
+                text=f'[OK] La posición ({f}, {c}) SÍ se muestrea en la reducción con salto {sy}x{sx}. Forma parte de la imagen reducida.',
+                fg=VERDE, bg='#f0fdf4'
+            )
+        else:
+            lbl_salto_rel.config(
+                text=f'[!] La posición ({f}, {c}) NO se muestrea con salto {sy}x{sx}. El cálculo es válido como demostración matemática.',
+                fg='#b45309', bg='#fefce8'
+            )
+
     callback_actualizar_calculo = actualizar_desde_externo
+    callback_actualizar_salto = actualizar_indicador_salto
     cargar_vecindad()
 
 
@@ -634,7 +862,7 @@ def construir_interfaz():
     cuerpo.pack(fill='both', expand=True, padx=8, pady=6)
 
     # Barra lateral de configuración
-    sb = tk.Frame(cuerpo, bg=BLANCO, width=320, padx=10, pady=8, relief='solid', bd=1)
+    sb = tk.Frame(cuerpo, bg=BLANCO, width=330, padx=10, pady=8, relief='solid', bd=1)
     sb.pack(side='left', fill='y', padx=(0, 8))
     sb.pack_propagate(False)
 
@@ -714,22 +942,23 @@ def construir_interfaz():
     tk.Button(sb, text='Ver cálculo paso a paso', command=mostrar_calculo,
               font=('Segoe UI', 9, 'bold'), bg='#e6edff', fg=AZUL, relief='flat', padx=6, pady=5).pack(fill='x', pady=(6, 0))
 
-    # Mosaico de 4 vistas
+    # Mosaico de 3 vistas (Original grande a la izquierda, Directa y Reducida a la derecha)
     mos = tk.Frame(cuerpo, bg=FONDO)
     mos.pack(side='left', fill='both', expand=True)
-    mos.grid_columnconfigure(0, weight=1, uniform='img')
-    mos.grid_columnconfigure(1, weight=1, uniform='img')
+    mos.grid_columnconfigure(0, weight=3)
+    mos.grid_columnconfigure(1, weight=2)
     mos.grid_rowconfigure(0, weight=1)
     mos.grid_rowconfigure(1, weight=1)
 
-    vistas = [('original', 'IMAGEN ORIGINAL (Clic para seleccionar píxel)'),
-              ('suavizada', 'IMAGEN SUAVIZADA'),
-              ('directa', 'REDUCCIÓN DIRECTA'),
-              ('reducida', 'REDUCCIÓN CON SUAVIZADO')]
+    vistas = [
+        ('original', 'IMAGEN ORIGINAL (Clic para seleccionar píxel)', 0, 0, 2, 1),
+        ('directa', 'REDUCCIÓN DIRECTA (SIN SUAVIZADO)', 0, 1, 1, 1),
+        ('reducida', 'REDUCCIÓN CON SUAVIZADO', 1, 1, 1, 1)
+    ]
 
-    for idx, (k, tit_txt) in enumerate(vistas):
+    for k, tit_txt, r, c, rspan, cspan in vistas:
         m = tk.Frame(mos, bg=BLANCO, relief='solid', bd=1, padx=3, pady=3)
-        m.grid(row=idx // 2, column=idx % 2, sticky='nsew', padx=3, pady=3)
+        m.grid(row=r, column=c, rowspan=rspan, columnspan=cspan, sticky='nsew', padx=3, pady=3)
         m.grid_rowconfigure(1, weight=1)
         m.grid_columnconfigure(0, weight=1)
 

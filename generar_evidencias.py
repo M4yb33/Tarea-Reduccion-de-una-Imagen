@@ -80,58 +80,68 @@ def capturar_widget_gdi(widget, ruta_salida):
 
 
 def generar_imagenes_procesamiento():
-    """Genera las 4 imágenes individuales y el mosaico comparativo."""
+    """Genera las 3 imágenes reales y el mosaico comparativo de tres vistas."""
     ruta_img = BASE_DIR / 'imagenes' / 'paisaje.png'
     img_orig = np.asarray(Image.open(ruta_img).convert('RGB'))
     masc_gauss = crear_mascara('Gaussiana', 3)
 
-    img_suav = aplicar_convolucion(img_orig, masc_gauss, 1, 1)
     img_dir = reducir_sin_suavizado(img_orig, 2, 2)
     img_red = aplicar_convolucion(img_orig, masc_gauss, 2, 2)
 
     Image.fromarray(img_orig).save(EVIDENCIAS_DIR / 'original.png')
-    Image.fromarray(img_suav).save(EVIDENCIAS_DIR / 'suavizada.png')
     Image.fromarray(img_dir).save(EVIDENCIAS_DIR / 'reduccion_directa.png')
     Image.fromarray(img_red).save(EVIDENCIAS_DIR / 'reduccion_suavizada.png')
 
-    # Mosaico comparativo
-    ancho_panel, alto_panel = 626, 417
-    mosaico = Image.new('RGB', (ancho_panel * 2 + 30, alto_panel * 2 + 90), color=(240, 243, 248))
+    # Mosaico comparativo de tres vistas (Original grande a la izquierda, reducciones a la derecha)
+    ancho_orig, alto_orig = 626, 417
+    ancho_red, alto_red = 313, 209
+    ancho_total = ancho_orig + ancho_orig + 40
+    alto_total = alto_orig + 60
+    mosaico = Image.new('RGB', (ancho_total, alto_total), color=(240, 243, 248))
     dibujo = ImageDraw.Draw(mosaico)
 
-    # Pegar 4 vistas
     im_o = Image.fromarray(img_orig)
-    im_s = Image.fromarray(img_suav)
-    im_d = Image.fromarray(img_dir).resize((ancho_panel, alto_panel), Image.Resampling.NEAREST)
-    im_r = Image.fromarray(img_red).resize((ancho_panel, alto_panel), Image.Resampling.LANCZOS)
+    im_d = Image.fromarray(img_dir).resize((ancho_orig, alto_orig // 2 - 10), Image.Resampling.LANCZOS)
+    im_r = Image.fromarray(img_red).resize((ancho_orig, alto_orig // 2 - 10), Image.Resampling.LANCZOS)
 
-    mosaico.paste(im_o, (10, 30))
-    mosaico.paste(im_s, (ancho_panel + 20, 30))
-    mosaico.paste(im_d, (10, alto_panel + 70))
-    mosaico.paste(im_r, (ancho_panel + 20, alto_panel + 70))
+    mosaico.paste(im_o, (15, 35))
+    mosaico.paste(im_d, (ancho_orig + 25, 35))
+    mosaico.paste(im_r, (ancho_orig + 25, alto_orig // 2 + 45))
 
-    dibujo.text((15, 10), '1. IMAGEN ORIGINAL (626x417 px - 261,042 pixeles)', fill=(24, 36, 58))
-    dibujo.text((ancho_panel + 25, 10), '2. IMAGEN SUAVIZADA (626x417 px - Gaussiana 3x3)', fill=(24, 36, 58))
-    dibujo.text((15, alto_panel + 50), '3. REDUCCIÓN DIRECTA (313x209 px - Sin filtro: Aliasing)', fill=(180, 83, 9))
-    dibujo.text((ancho_panel + 25, alto_panel + 50), '4. REDUCCIÓN CON SUAVIZADO (313x209 px - Anti-Aliasing)', fill=(5, 150, 105))
+    dibujo.text((15, 12), '1. IMAGEN ORIGINAL (626x417 px - 261,042 píxeles)', fill=(24, 36, 58))
+    dibujo.text((ancho_orig + 25, 12), '2. REDUCCIÓN DIRECTA (313x209 px - Sin filtro: Aliasing)', fill=(180, 83, 9))
+    dibujo.text((ancho_orig + 25, alto_orig // 2 + 25), '3. REDUCCIÓN CON SUAVIZADO (313x209 px - Convolución manual)', fill=(5, 150, 105))
 
-    mosaico.save(EVIDENCIAS_DIR / 'comparacion_cuatro_resultados.png')
-    print('[OK] Mosaico y 4 imágenes generados en evidencias/')
+    mosaico.save(EVIDENCIAS_DIR / 'comparacion_tres_resultados.png')
+    print('[OK] Mosaico de 3 vistas y las 3 imágenes generadas en evidencias/')
 
 
 def capturar_interfaz_y_calculo():
-    """Ejecuta la interfaz, carga la imagen y toma capturas de pantalla."""
+    """Ejecuta la interfaz, carga la imagen y toma capturas de pantalla de 3 vistas y cálculo."""
     raiz = main.construir_interfaz()
     main.cargar_imagen(str(BASE_DIR / 'imagenes' / 'paisaje.png'))
     raiz.update()
     capturar_widget_gdi(raiz, EVIDENCIAS_DIR / 'captura_interfaz.png')
 
+    # Captura cálculo paso a paso 3x3
     main.mostrar_calculo()
     raiz.update()
     v_calc = main.ventana_calculo_actual
     if v_calc:
         v_calc.update()
         capturar_widget_gdi(v_calc, EVIDENCIAS_DIR / 'captura_calculo_paso_a_paso.png')
+        v_calc.destroy()
+
+    # Captura cálculo paso a paso 7x7 (accesibilidad verificada)
+    main.tamano_mascara.set('7')
+    main.actualizar_mascara()
+    main.mostrar_calculo()
+    raiz.update()
+    v_calc_7 = main.ventana_calculo_actual
+    if v_calc_7:
+        v_calc_7.update()
+        capturar_widget_gdi(v_calc_7, EVIDENCIAS_DIR / 'captura_calculo_7x7.png')
+        v_calc_7.destroy()
 
     raiz.destroy()
 

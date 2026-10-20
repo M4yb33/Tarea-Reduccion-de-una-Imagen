@@ -27,7 +27,12 @@ OK - Prueba 8: Clic con coordenada x negativa retorna None
 OK - Prueba 8: Clic más allá del ancho del lienzo retorna None
 OK - Prueba 9: Ejercicio de defensa central suma/16 = 110
 OK - Prueba 9: Cálculo paso a paso coincide exactamente con aplicar_convolucion
+OK - Prueba 9: Convolución verdadera invierte correctamente la máscara asimétrica
 OK - Prueba 9: Coincidencia matemática exacta en fila 106, col 576, canal verde (76 == 76)
+OK - Prueba 9: Equivalencia matemática exacta para salto 2x2
+OK - Prueba 9: Equivalencia matemática exacta para salto 3x2
+OK - Prueba 9: Equivalencia matemática exacta para salto 2x3
+OK - Prueba 9: Equivalencia matemática exacta para salto 3x4
 OK - Prueba 10: (0, 0) es posición muestreada en salto 2x2
 OK - Prueba 10: (196, 312) es posición muestreada en salto 2x2
 OK - Prueba 10: (197, 313) NO es posición muestreada en salto 2x2
@@ -54,7 +59,7 @@ RESUMEN DE VERIFICACIÓN
 Original:    626 x 417 px (261,042 píxeles)
 Reducida:    313 x 209 px (65,417 píxeles)
 Reducción:   74.94 %
-Tiempo test: 113.0 ms
+Tiempo test: 18.0 ms
 ======================================================================
 LAS 18 PRUEBAS OBLIGATORIAS FINALIZARON CON ÉXITO (CÓDIGO DE SALIDA 0).
 ======================================================================

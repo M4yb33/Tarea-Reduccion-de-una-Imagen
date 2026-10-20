@@ -102,8 +102,13 @@ def reducir_sin_suavizado(imagen, salto_vertical, salto_horizontal):
     return imagen[::salto_vertical, ::salto_horizontal, :].copy()
 
 
-def calcular_datos(original, suavizada, reducida, tiempo_ms):
-    """Calcula medidas descriptivas de las imágenes, sin juicios automáticos."""
+def calcular_datos(original, reducida, tiempo_ms=0.0, _tiempo_ms_compat=None):
+    """Calcula medidas descriptivas de las imágenes reales existentes."""
+    if _tiempo_ms_compat is not None:
+        # Compatibilidad si se llama con 4 argumentos: (original, suavizada, reducida, tiempo_ms)
+        reducida = tiempo_ms
+        tiempo_ms = _tiempo_ms_compat
+
     alto, ancho = original.shape[:2]
     alto_nuevo, ancho_nuevo = reducida.shape[:2]
     pixeles_original = alto * ancho
@@ -127,9 +132,9 @@ def calcular_datos(original, suavizada, reducida, tiempo_ms):
         'pixeles_final': pixeles_final,
         'reduccion': 100 * (1 - pixeles_final / pixeles_original),
         'media_original': float(original.mean()),
-        'media_suavizada': float(suavizada.mean()),
+        'media_reducida': float(reducida.mean()),
         'variacion_original': variacion(original),
-        'variacion_suavizada': variacion(suavizada),
+        'variacion_reducida': variacion(reducida),
         'tiempo_ms': float(tiempo_ms),
     }
 
@@ -141,8 +146,8 @@ def exportar_metricas_csv(ruta_csv, nombre_imagen, datos, tipo_mascara, tamano_m
         'Fecha y Hora', 'Imagen', 'Ancho Original', 'Alto Original', 'Pixeles Original',
         'Ancho Final', 'Alto Final', 'Pixeles Final', 'Reduccion (%)',
         'Tipo Mascara', 'Tamano Mascara', 'Salto Horizontal', 'Salto Vertical',
-        'Tiempo (ms)', 'Media Original', 'Media Suavizada',
-        'Variacion Original', 'Variacion Suavizada'
+        'Tiempo (ms)', 'Media Original', 'Media Reducida',
+        'Variacion Original', 'Variacion Reducida'
     ]
 
     fila = [
@@ -161,9 +166,9 @@ def exportar_metricas_csv(ruta_csv, nombre_imagen, datos, tipo_mascara, tamano_m
         salto_v,
         f"{datos.get('tiempo_ms', 0):.2f}",
         f"{datos.get('media_original', 0):.2f}",
-        f"{datos.get('media_suavizada', 0):.2f}",
+        f"{datos.get('media_reducida', 0):.2f}",
         f"{datos.get('variacion_original', 0):.2f}",
-        f"{datos.get('variacion_suavizada', 0):.2f}"
+        f"{datos.get('variacion_reducida', 0):.2f}"
     ]
 
     archivo_existe = os.path.exists(ruta_csv)
@@ -218,15 +223,16 @@ def convertir_clic_a_pixel(clic_x, clic_y, lienzo_ancho, lienzo_alto, img_ancho,
         return None
     ox, oy = geom['ox'], geom['oy']
     vw, vh = geom['vw'], geom['vh']
-    factor = geom['factor']
 
+    # Ignorar clics fuera de la región real mostrada sin modificar la selección previa
     if clic_x < ox or clic_x >= ox + vw:
         return None
     if clic_y < oy or clic_y >= oy + vh:
         return None
 
-    columna = int((clic_x - ox) / factor)
-    fila = int((clic_y - oy) / factor)
+    # Conversión coherente usando los anchos y altos enteros representados (vw, vh)
+    columna = int((clic_x - ox) * img_ancho / vw)
+    fila = int((clic_y - oy) * img_alto / vh)
     columna = max(0, min(columna, img_ancho - 1))
     fila = max(0, min(fila, img_alto - 1))
     return fila, columna

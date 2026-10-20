@@ -161,13 +161,30 @@ comprobar(int(res_convolucion[1, 1, 0]) == 110, 'Prueba 9: Ejercicio de defensa 
 comprobar(np.array_equal(res_convolucion[1, 1], res_explicar),
           'Prueba 9: Cálculo paso a paso coincide exactamente con aplicar_convolucion')
 
+# Verificación de convolución verdadera con máscara personalizada asimétrica
+masc_asym = np.array([[1.0, 0.0, 0.0],
+                      [0.0, 0.0, 0.0],
+                      [0.0, 0.0, 0.0]], dtype=np.float64)
+# En convolución, la máscara se invierte: el píxel superior izquierdo de la máscara
+# multiplica al píxel inferior derecho de la vecindad.
+res_asym = aplicar_convolucion(pequena, masc_asym, 1, 1)
+comprobar(res_asym[1, 1, 0] == pequena[2, 2, 0],
+          'Prueba 9: Convolución verdadera invierte correctamente la máscara asimétrica')
+
 # Caso real de verificación de precisión completa (fila 106, columna 576, canal verde):
 ruta_paisaje_p9 = Path(__file__).resolve().parent / 'imagenes' / 'paisaje.png'
 img_p9 = np.asarray(Image.open(ruta_paisaje_p9).convert('RGB'))
-suav_p9 = aplicar_convolucion(img_p9, ideal_gauss, 1, 1)
+res_p9_directo = aplicar_convolucion(img_p9, ideal_gauss, 1, 1)
 _, _, _, res_106_576 = explicar_pixel(img_p9, ideal_gauss, 106, 576)
-comprobar(suav_p9[106, 576, 1] == res_106_576[1],
-          f'Prueba 9: Coincidencia matemática exacta en fila 106, col 576, canal verde ({res_106_576[1]} == {suav_p9[106, 576, 1]})')
+comprobar(res_p9_directo[106, 576, 1] == res_106_576[1],
+          f'Prueba 9: Coincidencia matemática exacta en fila 106, col 576, canal verde ({res_106_576[1]} == {res_p9_directo[106, 576, 1]})')
+
+# Verificación de equivalencia crucial: aplicar_convolucion(..., sv, sh) == aplicar_convolucion(..., 1, 1)[::sv, ::sh]
+for sv, sh in ((2, 2), (3, 2), (2, 3), (3, 4)):
+    salida_directa_conv = aplicar_convolucion(img_p9, ideal_gauss, sv, sh)
+    salida_submuestreada = res_p9_directo[::sv, ::sh, :]
+    comprobar(np.array_equal(salida_directa_conv, salida_submuestreada),
+              f'Prueba 9: Equivalencia matemática exacta para salto {sv}x{sh}')
 
 # -----------------------------------------------------------------------------
 # Prueba 10. Identificación de posiciones de muestreo para salto 2×2.
@@ -278,13 +295,12 @@ con_suavizado = aplicar_convolucion(patron_rgb, ideal_gauss, 2, 2)
 comprobar(np.all(sin_suavizar == 0) and 90 < con_suavizado.mean() < 170,
           'Complementaria: El suavizado previo mitiga el aliasing en patrones de alta frecuencia')
 
-# Métricas sobre imagen de referencia
+# Métricas sobre imagen de referencia (sin necesidad de calcular suavizado completo)
 img_real = np.asarray(Image.open(ruta_paisaje).convert('RGB'))
 t0 = perf_counter()
-suav = aplicar_convolucion(img_real, ideal_gauss, 1, 1)
 red = aplicar_convolucion(img_real, ideal_gauss, 2, 2)
 t_ms = (perf_counter() - t0) * 1000
-datos_paisaje = calcular_datos(img_real, suav, red, t_ms)
+datos_paisaje = calcular_datos(img_real, red, t_ms)
 
 print('\n======================================================================')
 print('RESUMEN DE VERIFICACIÓN')

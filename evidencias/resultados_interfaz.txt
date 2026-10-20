@@ -1,13 +1,28 @@
-GUI 1: Carga y muestra cuatro fotografías con dimensiones verificadas (626x417 -> 313x209)
-GUI 2: Deslizador horizontal actualiza resolución en tiempo real a 209x209
-GUI 3: Deslizador vertical actualiza resolución en tiempo real a 209x139
-GUI 4: Volver a los mismos saltos (2x2) reproduce la imagen exactamente píxel por píxel
-GUI 5: Cambiar a máscara de Promedio recalcula el resultado de reducción
-GUI 6: Máscara personalizada identidad equivale matemáticamente a reducción directa
-GUI 7: Guardado PNG conserva dimensiones y valores reales sin pérdida
-GUI 8: Ventana interactiva de cálculo paso a paso se inicializa y abre correctamente
-GUI 9: Botón Restaurar restablece configuración inicial (Gaussiana 3x3, salto 2x2)
-GUI 10: Máscara personalizada de ceros es rechazada sin sustitución silenciosa
-GUI 11: Selección por clic en lienzo mapea correctamente a píxel (208, 311)
-GUI 12: Ventana de cálculo paso a paso coincide exactamente con imagen suavizada (76)
-TODAS LAS PRUEBAS DE INTERFAZ FINALIZADAS CON ÉXITO.
+======================================================================
+EJECUTANDO PRUEBAS DE INTERFAZ Y CÁLCULO PASO A PASO
+======================================================================
+
+GUI 1: Interfaz configurada exactamente con 3 vistas (Original, Reducción directa, Reducción con suavizado)
+GUI 2: Deslizadores horizontal y vertical actualizan ambas reducciones en tiempo real (209x313)
+GUI 3: Cambio a máscara de Promedio recalcula reducción con suavizado preservando el original intacto
+GUI 4: CORRECCIÓN 1 VERIFICADA — Matrices 3x3, 5x5 y 7x7 (49 celdas) se muestran completas sin recorte
+GUI 5: Máscara personalizada de identidad equivale matemáticamente a la reducción directa
+GUI 6: Guardado PNG conserva dimensiones exactas (313x209) y datos de reducción con suavizado
+GUI 7: Botón Restaurar restablece parámetros iniciales (Gaussiana 3x3, salto 2x2, 313x209)
+GUI 8: Validación de interfaz rechaza máscara personalizada de ceros sin sustitución silenciosa
+GUI 9: Selección por clic en centro (208, 312), 4 bordes y márgenes verificada exactamente
+GUI 10: Normalización en cálculo paso a paso probada (intensidad 100 con pesos suma 1.25 -> resultado 100, no 125)
+GUI 11: Caso A probado — Cambio 3x3 a 7x7 sincroniza 49 celdas y permite seleccionar píxeles sin excepción
+GUI 12: Caso B probado — Cambio 7x7 a 3x3 sincroniza 9 celdas en sentido inverso
+GUI 13: Caso C probado — Cambio de tipo a Personalizada actualiza permisos de edición a normal
+GUI 14: Caso D probado — Cambio de saltos actualiza indicador en tiempo real sin destruir la ventana
+GUI 15: Caso E probado — Cargar nueva imagen sincroniza dimensiones y píxel central en cálculo paso a paso
+GUI 16: Caso F probado — Cierre manual limpia referencias; reapertura posterior funciona sin callbacks obsoletos
+GUI 17: Caso G probado — Aplicación de máscara desde cálculo no destruye ventana y coincide matemáticamente (56)
+GUI 18: Ventana de cálculo paso a paso presenta estado pendiente/aviso ante entradas inválidas sin cerrarse ni sustituir por ceros
+GUI 19: Exportación CSV verificada sin referencias obsoletas a imágenes inexistentes
+GUI 20: Presets personalizados verificados — Preset 1-2-1 en 7x7 genera pesos binomiales con centro 400 (corregido el defecto del 5 central)
+
+======================================================================
+TODAS LAS 20 PRUEBAS DE INTERFAZ Y CÁLCULO FINALIZARON CON ÉXITO.
+======================================================================
