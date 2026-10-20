@@ -1,0 +1,26 @@
+OK — Promedio 3x3 normalizado
+OK — Gaussiana 3x3 ≈ [1 2 1] exterior /16
+OK — Gaussiana 3x3: suma de pesos igual a 1
+OK — Gaussiana 5x5: suma de pesos igual a 1
+OK — Gaussiana 7x7: suma de pesos igual a 1
+OK — Cálculo manual central: suma/16 = 110
+OK — Padding de ceros: esquina 90*4/9=40
+OK — Reflejo mantiene fotografía constante
+OK — Salto 1x1 mantiene las dimensiones
+OK — Salto 2x2: redondeo hacia arriba de 5x7
+OK — Salto vertical 2 y horizontal 3
+OK — Filtrar y saltar da exactamente el mismo resultado
+OK — Reducción directa: solo píxeles originales muestreados
+OK — La máscara se invierte como exige la convolución (no correlación)
+OK — Detalle didáctico de productos reproduce la salida
+OK — Salida de tres canales con enteros de 8 bits
+OK — Paisaje: 626x417 pasa a 313x209 píxeles
+OK — Conservación de dimensiones y conteo exacto de píxeles
+OK — La máscara gaussiana reduce la variación entre píxeles vecinos
+OK — Misma entrada y configuración = misma imagen píxel por píxel
+OK — PNG exportado sin modificar los píxeles
+OK — Patrón alterno: el filtro evita que todos los cuadros se vuelvan negros
+OK — Máscara de suavizado rechaza pesos negativos
+
+Todas las pruebas matemáticas finalizaron correctamente. Tiempo ejemplo: 12.8 ms.
+Reducción de píxeles: 74.94 %.

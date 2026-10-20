@@ -1,0 +1,96 @@
+# ==========================================
+# TALLER DE SUAVIZADO Y REDUCCIÓN DE IMÁGENES
+# Python - Tkinter - NumPy - Matplotlib
+# ==========================================
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+ENV/
+
+# Archivos temporales de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Cachés de pruebas
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Archivos de compilación y distribución
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Configuración de IDEs
+.vscode/
+.idea/
+*.code-workspace
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs y archivos temporales
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Archivos temporales de Jupyter
+.ipynb_checkpoints/
+
+# Resultados generados por el procesamiento
+imagenes/resultados/
+resultados/
+salidas/
+output/
+outputs/
+*.csv
+resultados_procesamiento.csv
+
+# Capturas temporales
+capturas_temporales/
+*_temporal.png
+*_temp.png
+
+# Archivos locales de configuración
+.env
+.env.*
+!.env.example
+
+# Archivos comprimidos generados
+*.zip
+*.tar.gz
+*.7z
+
+# ==========================================
+# ARCHIVOS IMPORTANTES QUE SÍ SE CONSERVAN
+# ==========================================
+
+!main.py
+!procesamiento.py
+!pruebas.py
+!requirements.txt
+!README.md
+!DEFENSA_DOS_INTEGRANTES.md
+
+# Imágenes originales de ejemplo
+!imagenes/
+!imagenes/paisaje.jpg
+!imagenes/paisaje.png
+
+# Evidencias académicas del proyecto
+!evidencias/
+!evidencias/*.png
+!evidencias/*.jpg

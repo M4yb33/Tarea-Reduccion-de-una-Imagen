@@ -1,0 +1,11 @@
+GUI 1: carga y muestra cuatro fotografías con dimensiones verificadas
+GUI 2: deslizador horizontal actualiza resolución sin pulsar Procesar
+GUI 3: deslizador vertical actualiza resolución sin pulsar Procesar
+GUI 4: volver a los mismos valores reproduce la imagen píxel por píxel
+GUI 5: cambiar máscara recalcula el resultado
+GUI 6: máscara personalizada de identidad equivale a reducción directa
+GUI 7: guardado PNG conserva dimensiones y valores reales
+GUI 8: calculadora de convolución con valores reales funciona
+GUI 9: Restaurar original recupera exactamente la foto de entrada
+GUI 10: procesar después de restaurar usa los parámetros visibles
+TODAS LAS PRUEBAS DE INTERFAZ FINALIZADAS.

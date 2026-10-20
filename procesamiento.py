@@ -1,417 +1,179 @@
-"""
-=============================================================================
-PROYECTO: Taller de Reducción y Suavizado de Imágenes con Máscara
-ASIGNATURA: Inteligencia Artificial
-DESCRIPCIÓN:
-    Este archivo contiene únicamente las funciones matemáticas necesarias para:
-    1. Cargar y guardar imágenes como matrices NumPy.
-    2. Crear máscaras de suavizado (Promedio y Gaussiana).
-    3. Aplicar padding de ceros a la imagen.
-    4. Reducir la imagen aplicando convolución manual y saltos (stride).
-    5. Reducir la imagen de forma directa (sin suavizado) para comparar.
+"""Suavizado y reducción de imágenes: máscaras y saltos programados manualmente.
 
-    Todas las funciones están escritas en Python básico y NumPy, usando bucles
-    explícitos 'for' para que el procedimiento sea fácil de seguir y defender.
-=============================================================================
+No se utilizan cv2.resize, PIL.resize, GaussianBlur, filter2D ni otras funciones
+que realicen el filtrado o la reducción de forma automática.
+El padding con ceros se aplica internamente en las operaciones de convolución.
 """
 
-import math
+import csv
+import os
+from datetime import datetime
 import numpy as np
-from PIL import Image
 
 
-# ---------------------------------------------------------------------------
-# 1. CARGA Y GUARDADO DE IMÁGENES
-# ---------------------------------------------------------------------------
+def crear_mascara(tipo, tamano, valores=None):
+    """Construye una máscara normalizada de dimensiones impares."""
+    if tamano not in (3, 5, 7):
+        raise ValueError('La máscara debe ser de 3x3, 5x5 o 7x7.')
 
-def cargar_imagen(ruta_archivo):
+    if tipo == 'Promedio':
+        mascara = np.ones((tamano, tamano), dtype=np.float64)
+    elif tipo == 'Gaussiana':
+        # Gaussiana 3x3: sigma=0.8493 reproduce aproximadamente [1,2,1].
+        sigma = {3: 0.8493, 5: 1.10, 7: 1.40}[tamano]
+        posiciones = np.arange(tamano) - tamano // 2
+        vector = np.exp(-(posiciones ** 2) / (2 * sigma ** 2))
+        mascara = np.outer(vector, vector)
+    elif tipo == 'Personalizada':
+        if valores is None:
+            raise ValueError('Introduzca los valores de la máscara personalizada.')
+        mascara = np.asarray(valores, dtype=np.float64)
+        if mascara.shape != (tamano, tamano):
+            raise ValueError(f'La máscara debe contener {tamano} filas y columnas.')
+        if not np.all(np.isfinite(mascara)):
+            raise ValueError('La máscara no admite valores infinitos o vacíos.')
+        if np.any(mascara < 0) or not np.any(mascara > 0):
+            raise ValueError('Para suavizar, utilice pesos no negativos y alguno positivo.')
+    else:
+        raise ValueError('Seleccione Promedio, Gaussiana o Personalizada.')
+
+    return mascara / mascara.sum()
+
+
+def aplicar_convolucion(imagen, mascara, salto_vertical=1, salto_horizontal=1):
+    """Multiplica máscara por vecindades RGB, suma productos y avanza por saltos.
+
+    Se recorren las FILAS y COLUMNAS de la máscara mediante dos bucles sencillos.
+    Aplica internamente padding de ceros en los bordes para centrar el kernel.
+    No usa funciones de convolución ni de reducción prediseñadas.
     """
-    Carga un archivo de imagen y lo convierte en una matriz de NumPy.
+    if imagen.ndim != 3 or imagen.shape[2] != 3 or imagen.dtype != np.uint8:
+        raise ValueError('Se espera una imagen RGB (alto, ancho, 3) de tipo uint8.')
+    if not isinstance(salto_vertical, (int, np.integer)) or salto_vertical < 1:
+        raise ValueError('El salto vertical debe ser un entero positivo.')
+    if not isinstance(salto_horizontal, (int, np.integer)) or salto_horizontal < 1:
+        raise ValueError('El salto horizontal debe ser un entero positivo.')
+    mascara = np.asarray(mascara, dtype=np.float64)
+    tamano = mascara.shape[0]
+    if mascara.ndim != 2 or mascara.shape != (tamano, tamano) or tamano % 2 != 1:
+        raise ValueError('La máscara debe ser una matriz cuadrada impar.')
+    if not np.all(np.isfinite(mascara)):
+        raise ValueError('La máscara contiene valores no válidos.')
 
-    ¿Qué recibe?
-        - ruta_archivo (str): Ruta en el disco donde se encuentra la imagen.
+    alto, ancho = imagen.shape[:2]
+    relleno = tamano // 2
+    # Padding de ceros interno obligatorio
+    ampliada = np.pad(imagen.astype(np.float32),
+                      ((relleno, relleno), (relleno, relleno), (0, 0)), mode='constant')
 
-    ¿Qué operación realiza?
-        - Abre la imagen con la librería PIL.
-        - La convierte a formato RGB (3 canales: Rojo, Verde, Azul).
-        - La transforma en un arreglo NumPy de tipo float64 (valores entre 0.0 y 255.0).
-          Se usa float64 para evitar errores de desbordamiento en las operaciones matemáticas.
+    filas_salida = (alto - 1) // salto_vertical + 1
+    columnas_salida = (ancho - 1) // salto_horizontal + 1
+    salida = np.zeros((filas_salida, columnas_salida, 3), dtype=np.float32)
 
-    ¿Por qué es necesaria?
-        - Las operaciones de convolución y filtrado requieren trabajar con matrices numéricas.
+    # Convolución verdadera: invertir los pesos de la máscara. Para las
+    # máscaras simétricas (promedio y gaussiana), esta inversión es idéntica.
+    invertida = mascara[::-1, ::-1]
+    for fila_mascara in range(tamano):
+        for columna_mascara in range(tamano):
+            peso = float(invertida[fila_mascara, columna_mascara])
+            if peso == 0:
+                continue
+            # Todas las vecindades cuyos centros siguen los saltos elegidos.
+            region = ampliada[
+                fila_mascara:fila_mascara + filas_salida * salto_vertical:salto_vertical,
+                columna_mascara:columna_mascara + columnas_salida * salto_horizontal:salto_horizontal,
+                :
+            ]
+            salida += region * peso  # Producto elemento a elemento + suma.
 
-    ¿Qué devuelve?
-        - matriz_imagen (np.ndarray): Matriz tridimensional con dimensiones (alto, ancho, 3).
-    """
-    imagen_pil = Image.open(ruta_archivo)
-    imagen_rgb = imagen_pil.convert("RGB")
-    matriz_imagen = np.array(imagen_rgb, dtype=np.float64)
-    return matriz_imagen
-
-
-def guardar_imagen(matriz_imagen, ruta_archivo):
-    """
-    Guarda una matriz de imagen como archivo en el disco (JPEG o PNG).
-
-    ¿Qué recibe?
-        - matriz_imagen (np.ndarray): Matriz numérica de la imagen.
-        - ruta_archivo (str): Ruta de destino para guardar la imagen.
-
-    ¿Qué operación realiza?
-        - Limita los valores al rango válido [0, 255] usando np.clip.
-        - Convierte los valores de flotante a enteros de 8 bits (uint8).
-        - Guarda la imagen en disco utilizando PIL.
-
-    ¿Por qué es necesaria?
-        - Permite exportar y verificar visualmente los resultados obtenidos.
-
-    ¿Qué devuelve?
-        - None.
-    """
-    matriz_clipeada = np.clip(matriz_imagen, 0, 255)
-    matriz_uint8 = matriz_clipeada.astype(np.uint8)
-    imagen_pil = Image.fromarray(matriz_uint8)
-    imagen_pil.save(ruta_archivo)
+    return np.clip(np.rint(salida), 0, 255).astype(np.uint8)
 
 
-# ---------------------------------------------------------------------------
-# 2. CREACIÓN DE MÁSCARAS DE SUAVIZADO
-# ---------------------------------------------------------------------------
-
-def crear_mascara_promedio(tamano):
-    """
-    Crea una máscara de suavizado por promedio (filtro de caja / Box Blur).
-
-    ¿Qué recibe?
-        - tamano (int): Tamaño del kernel o ventana (debe ser impar, ej. 3, 5, 7).
-
-    ¿Qué operación matemática realiza?
-        - Cada celda de la matriz recibe el valor:
-              M[i, j] = 1 / (tamano * tamano)
-        - Todos los coeficientes son idénticos y la suma total de la matriz es 1.0.
-
-    ¿Por qué es necesaria?
-        - Calcula el promedio aritmético de los píxeles vecinos. Al promediar,
-          se atenúan las frecuencias altas (ruido y cambios bruscos), lo que
-          evita el efecto de aliasing al reducir la imagen.
-        - La suma de los pesos debe ser 1.0 para que el brillo general no cambie.
-
-    ¿Qué devuelve?
-        - mascara (np.ndarray): Matriz bidimensional de (tamano, tamano) con tipo float64.
-
-    ¿Qué ocurre si se modifica el parámetro 'tamano'?
-        - A mayor tamaño (ej. 5 o 7), mayor cantidad de vecinos se promedian,
-          produciendo un desenfoque más pronunciado.
-    """
-    total_celdas = tamano * tamano
-    valor_peso = 1.0 / total_celdas
-
-    # Creamos una matriz llena con el mismo peso en cada posición
-    mascara = np.full((tamano, tamano), valor_peso, dtype=np.float64)
-    return mascara
+def reducir_sin_suavizado(imagen, salto_vertical, salto_horizontal):
+    """Referencia experimental: muestrea píxeles sin promediarlos."""
+    return imagen[::salto_vertical, ::salto_horizontal, :].copy()
 
 
-def crear_mascara_gaussiana(tamano, sigma=1.0):
-    """
-    Crea una máscara de suavizado basada en la distribución Gaussiana 2D.
+def calcular_datos(original, suavizada, reducida, tiempo_ms):
+    """Calcula medidas descriptivas de las imágenes, sin juicios automáticos."""
+    alto, ancho = original.shape[:2]
+    alto_nuevo, ancho_nuevo = reducida.shape[:2]
+    pixeles_original = alto * ancho
+    pixeles_final = alto_nuevo * ancho_nuevo
 
-    ¿Qué recibe?
-        - tamano (int): Tamaño impar de la máscara (ej. 3, 5, 7).
-        - sigma (float): Desviación estándar de la función gaussiana (por defecto 1.0).
+    # Diferencia promedio entre vecinos: mide variación espacial (no es PSNR).
+    def variacion(imagen):
+        matriz = imagen.astype(np.float32)
+        vertical = np.abs(matriz[1:, :, :] - matriz[:-1, :, :]).mean() if matriz.shape[0] > 1 else 0
+        horizontal = np.abs(matriz[:, 1:, :] - matriz[:, :-1, :]).mean() if matriz.shape[1] > 1 else 0
+        return float((vertical + horizontal) / 2)
 
-    ¿Qué operación matemática realiza?
-        - Para cada celda (i, j), calcula la distancia respecto al centro de la máscara:
-              x = j - radio
-              y = i - radio
-        - Aplica la fórmula gaussiana bidimensional:
-              G(x, y) = exp( -(x^2 + y^2) / (2 * sigma^2) )
-        - Finalmente, normaliza la matriz dividiendo cada celda entre la suma de todas
-          las celdas, garantizando que la suma total sea exactamente 1.0:
-              M[i, j] = G(x, y) / suma_total
+    return {
+        'original': f'{ancho} × {alto}',
+        'final': f'{ancho_nuevo} × {alto_nuevo}',
+        'ancho_original': ancho,
+        'alto_original': alto,
+        'ancho_final': ancho_nuevo,
+        'alto_final': alto_nuevo,
+        'pixeles_original': pixeles_original,
+        'pixeles_final': pixeles_final,
+        'reduccion': 100 * (1 - pixeles_final / pixeles_original),
+        'media_original': float(original.mean()),
+        'media_suavizada': float(suavizada.mean()),
+        'variacion_original': variacion(original),
+        'variacion_suavizada': variacion(suavizada),
+        'tiempo_ms': float(tiempo_ms),
+    }
 
-    ¿Por qué es necesaria?
-        - A diferencia del promedio, la función gaussiana asigna mayor importancia
-          al píxel central y menor importancia a los píxeles alejados. Esto produce
-          un suavizado más suave y natural sin perder tanta definición de bordes.
 
-    ¿Qué devuelve?
-        - mascara (np.ndarray): Matriz bidimensional de (tamano, tamano) normalizada a suma 1.0.
+def exportar_metricas_csv(ruta_csv, nombre_imagen, datos, tipo_mascara, tamano_mascara,
+                           salto_h, salto_v):
+    """Escribe las métricas comprobables en un archivo CSV."""
+    encabezados = [
+        'Fecha y Hora', 'Imagen', 'Ancho Original', 'Alto Original', 'Pixeles Original',
+        'Ancho Final', 'Alto Final', 'Pixeles Final', 'Reduccion (%)',
+        'Tipo Mascara', 'Tamano Mascara', 'Salto Horizontal', 'Salto Vertical',
+        'Tiempo (ms)', 'Media Original', 'Media Suavizada',
+        'Variacion Original', 'Variacion Suavizada'
+    ]
 
-    ¿Qué ocurre si se modifica 'sigma'?
-        - Un sigma pequeño (ej. 0.5) concentra el peso en el centro (menos desenfoque).
-        - Un sigma grande (ej. 2.0) dispersa el peso uniformemente (más desenfoque).
-    """
+    fila = [
+        datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        nombre_imagen,
+        datos.get('ancho_original', ''),
+        datos.get('alto_original', ''),
+        datos.get('pixeles_original', ''),
+        datos.get('ancho_final', ''),
+        datos.get('alto_final', ''),
+        datos.get('pixeles_final', ''),
+        f"{datos.get('reduccion', 0):.2f}",
+        tipo_mascara,
+        f"{tamano_mascara}x{tamano_mascara}",
+        salto_h,
+        salto_v,
+        f"{datos.get('tiempo_ms', 0):.2f}",
+        f"{datos.get('media_original', 0):.2f}",
+        f"{datos.get('media_suavizada', 0):.2f}",
+        f"{datos.get('variacion_original', 0):.2f}",
+        f"{datos.get('variacion_suavizada', 0):.2f}"
+    ]
+
+    archivo_existe = os.path.exists(ruta_csv)
+    with open(ruta_csv, mode='a', newline='', encoding='utf-8') as archivo:
+        escritor = csv.writer(archivo)
+        if not archivo_existe:
+            escritor.writerow(encabezados)
+        escritor.writerow(fila)
+
+
+def explicar_pixel(imagen, mascara, fila, columna):
+    """Desglosa cada multiplicación del píxel solicitado para la defensa."""
+    tamano = mascara.shape[0]
     radio = tamano // 2
-    mascara = np.zeros((tamano, tamano), dtype=np.float64)
-
-    # Recorremos cada posición de la máscara con bucles for
-    for i in range(tamano):
-        for j in range(tamano):
-            x = j - radio
-            y = i - radio
-            exponente = -(x ** 2 + y ** 2) / (2.0 * (sigma ** 2))
-            mascara[i, j] = math.exp(exponente)
-
-    # Normalización: dividimos para que la suma de todos los pesos sea 1.0
-    suma_total = np.sum(mascara)
-    mascara = mascara / suma_total
-
-    return mascara
-
-
-def normalizar_mascara(mascara):
-    """
-    Normaliza cualquier matriz (útil para máscaras personalizadas).
-
-    ¿Qué recibe?
-        - mascara (np.ndarray): Matriz bidimensional con pesos numéricos.
-
-    ¿Qué operación matemática realiza?
-        - Divide cada elemento entre la suma total de los elementos.
-        - Si la suma es cero, devuelve la matriz sin cambios para evitar división por cero.
-
-    ¿Por qué es necesaria?
-        - Si los pesos de una máscara no suman 1.0, la imagen resultante
-          se aclararía o se oscurecería drásticamente.
-
-    ¿Qué devuelve?
-        - mascara_normalizada (np.ndarray).
-    """
-    suma = np.sum(mascara)
-    if suma != 0:
-        return mascara / suma
-    return mascara
-
-
-# ---------------------------------------------------------------------------
-# 3. PADDING (RELLENO DE BORDES)
-# ---------------------------------------------------------------------------
-
-def aplicar_padding_ceros(matriz_imagen, grosor_pad):
-    """
-    Agrega un borde de ceros alrededor de la matriz de la imagen.
-
-    ¿Qué recibe?
-        - matriz_imagen (np.ndarray): Matriz 2D (escala de grises) o 3D (color).
-        - grosor_pad (int): Cantidad de filas y columnas de relleno (generalmente tamano_mascara // 2).
-
-    ¿Qué operación realiza?
-        - Si el grosor es 0, retorna la matriz tal como está.
-        - Crea una matriz nueva más grande llena de ceros.
-        - Copia la imagen original en el centro de la nueva matriz.
-
-    ¿Por qué es necesaria?
-        - Al aplicar una máscara de KxK sobre los píxeles del borde de la imagen,
-          parte de la máscara quedaría fuera de la imagen. El padding evita errores
-          de desbordamiento de índices y permite procesar los bordes uniformemente.
-
-    ¿Qué devuelve?
-        - imagen_con_padding (np.ndarray): Matriz de mayores dimensiones con ceros en el contorno.
-    """
-    if grosor_pad <= 0:
-        return matriz_imagen.copy()
-
-    # Si es imagen a color (3 dimensiones: alto, ancho, canales)
-    if matriz_imagen.ndim == 3:
-        alto, ancho, canales = matriz_imagen.shape
-        nuevo_alto = alto + 2 * grosor_pad
-        nuevo_ancho = ancho + 2 * grosor_pad
-
-        # Creamos la matriz más grande llena de ceros
-        imagen_con_padding = np.zeros((nuevo_alto, nuevo_ancho, canales), dtype=matriz_imagen.dtype)
-
-        # Colocamos la imagen original en el centro
-        imagen_con_padding[grosor_pad : grosor_pad + alto, grosor_pad : grosor_pad + ancho, :] = matriz_imagen
-
-        return imagen_con_padding
-
-    # Si es imagen en escala de grises (2 dimensiones: alto, ancho)
-    else:
-        alto, ancho = matriz_imagen.shape
-        nuevo_alto = alto + 2 * grosor_pad
-        nuevo_ancho = ancho + 2 * grosor_pad
-
-        imagen_con_padding = np.zeros((nuevo_alto, nuevo_ancho), dtype=matriz_imagen.dtype)
-        imagen_con_padding[grosor_pad : grosor_pad + alto, grosor_pad : grosor_pad + ancho] = matriz_imagen
-
-        return imagen_con_padding
-
-
-# ---------------------------------------------------------------------------
-# 4. REDUCCIÓN CON SUAVIZADO (CONVOLUCIÓN + SALTO / STRIDE)
-# ---------------------------------------------------------------------------
-
-def reducir_con_suavizado(matriz_imagen, mascara, salto_fila=2, salto_columna=2):
-    """
-    Aplica suavizado con máscara y reduce las dimensiones de la imagen mediante saltos (strides).
-
-    Sigue exactamente los 8 pasos solicitados:
-        1. Obtener dimensiones de la matriz.
-        2. Determinar el tamaño de la máscara y calcular el padding necesario.
-        3. Aplicar padding con ceros a la imagen.
-        4. Calcular el nuevo tamaño de salida y crear la matriz reducida.
-        5. Recorrer los píxeles originales avanzando de salto_fila y salto_columna.
-        6. Extraer la ventana y multiplicar por la máscara elemento a elemento.
-        7. Sumar los productos de la multiplicación.
-        8. Guardar el resultado en la matriz de salida.
-
-    ¿Qué recibe?
-        - matriz_imagen (np.ndarray): Matriz de entrada (2D o 3D).
-        - mascara (np.ndarray): Matriz bidimensional de pesos (ej. 3x3 o 5x5).
-        - salto_fila (int): Paso vertical entre muestras (stride vertical, ej. 2).
-        - salto_columna (int): Paso horizontal entre muestras (stride horizontal, ej. 2).
-
-    ¿Qué operación matemática realiza?
-        - Convolución discreta centrada en cada punto de muestreo:
-              Salida[f, c] = Suma( Ventana(i, j) * Mascara )
-          donde los puntos (i, j) avanzan con pasos (salto_fila, salto_columna).
-
-    ¿Por qué es necesaria?
-        - Actúa como un filtro pasa-bajas anti-aliasing antes del submuestreo.
-          Al eliminar las frecuencias espaciales altas, se evita que los detalles
-          finos se transformen en patrones moiré o bordes dentados.
-
-    ¿Qué devuelve?
-        - matriz_reducida (np.ndarray): Nueva matriz con dimensiones reducidas y valores suavizados.
-
-    ¿Qué ocurre si se modifican los saltos?
-        - Si salto_fila = 2 y salto_columna = 2, la imagen se reduce a la mitad (50%).
-        - Si salto_fila = 3 y salto_columna = 3, la imagen se reduce a la tercera parte (33%).
-    """
-    # 1. Obtener dimensiones de la imagen
-    es_color = (matriz_imagen.ndim == 3)
-    if es_color:
-        alto_original, ancho_original, canales = matriz_imagen.shape
-    else:
-        alto_original, ancho_original = matriz_imagen.shape
-        canales = 1
-
-    # 2. Tamaño de la máscara y cálculo de padding
-    tamano_mascara = mascara.shape[0]
-    radio_pad = tamano_mascara // 2
-
-    # 3. Aplicar padding de ceros
-    imagen_con_padding = aplicar_padding_ceros(matriz_imagen, radio_pad)
-
-    # 4. Calcular dimensiones de salida y crear matriz reducida
-    # La cantidad de pasos es cuántos saltos caben a lo largo del alto y ancho
-    alto_salida = math.ceil(alto_original / salto_fila)
-    ancho_salida = math.ceil(ancho_original / salto_columna)
-
-    if es_color:
-        matriz_reducida = np.zeros((alto_salida, ancho_salida, canales), dtype=np.float64)
-    else:
-        matriz_reducida = np.zeros((alto_salida, ancho_salida), dtype=np.float64)
-
-    # 5. Recorrer los píxeles con los saltos seleccionados
-    fila_salida = 0
-    for i in range(0, alto_original, salto_fila):
-        col_salida = 0
-        for j in range(0, ancho_original, salto_columna):
-
-            # Extraemos la región correspondiente en la imagen con padding
-            # El centro de la ventana corresponde exactamente al píxel original (i, j)
-            if es_color:
-                for c in range(canales):
-                    # Ventana de tamaño (tamano_mascara, tamano_mascara)
-                    ventana = imagen_con_padding[i : i + tamano_mascara, j : j + tamano_mascara, c]
-
-                    # 6. Multiplicar los valores de la máscara por los píxeles correspondientes
-                    producto = ventana * mascara
-
-                    # 7. Sumar los productos
-                    suma_productos = np.sum(producto)
-
-                    # 8. Guardar el resultado en la nueva matriz de menor tamaño
-                    matriz_reducida[fila_salida, col_salida, c] = suma_productos
-            else:
-                ventana = imagen_con_padding[i : i + tamano_mascara, j : j + tamano_mascara]
-                producto = ventana * mascara
-                suma_productos = np.sum(producto)
-                matriz_reducida[fila_salida, col_salida] = suma_productos
-
-            col_salida += 1
-        fila_salida += 1
-
-    return matriz_reducida
-
-
-# ---------------------------------------------------------------------------
-# 5. REDUCCIÓN DIRECTA SIN SUAVIZADO (SUBMUESTREO SIMPLE)
-# ---------------------------------------------------------------------------
-
-def reducir_directo_sin_suavizado(matriz_imagen, salto_fila=2, salto_columna=2):
-    """
-    Reduce la imagen tomando directamente un píxel cada cierto salto, sin aplicar ninguna máscara.
-
-    ¿Qué recibe?
-        - matriz_imagen (np.ndarray): Matriz original de la imagen.
-        - salto_fila (int): Paso de filas (stride vertical).
-        - salto_columna (int): Paso de columnas (stride horizontal).
-
-    ¿Qué operación realiza?
-        - Recorre la imagen con los saltos indicados y copia el píxel exacto
-          de la coordenada (i, j) hacia la nueva matriz reducida.
-
-    ¿Por qué es necesaria?
-        - Sirve como método de CONTROL y COMPARACIÓN. Permite observar
-          el aliasing (pixelado brusco, pérdida de continuidad) que ocurre
-          cuando se reduce una imagen sin filtrar previamente las frecuencias altas.
-
-    ¿Qué devuelve?
-        - matriz_reducida (np.ndarray): Matriz reducida directamente.
-    """
-    es_color = (matriz_imagen.ndim == 3)
-    if es_color:
-        alto_original, ancho_original, canales = matriz_imagen.shape
-    else:
-        alto_original, ancho_original = matriz_imagen.shape
-        canales = 1
-
-    alto_salida = math.ceil(alto_original / salto_fila)
-    ancho_salida = math.ceil(ancho_original / salto_columna)
-
-    if es_color:
-        matriz_reducida = np.zeros((alto_salida, ancho_salida, canales), dtype=matriz_imagen.dtype)
-    else:
-        matriz_reducida = np.zeros((alto_salida, ancho_salida), dtype=matriz_imagen.dtype)
-
-    fila_salida = 0
-    for i in range(0, alto_original, salto_fila):
-        col_salida = 0
-        for j in range(0, ancho_original, salto_columna):
-            if es_color:
-                matriz_reducida[fila_salida, col_salida, :] = matriz_imagen[i, j, :]
-            else:
-                matriz_reducida[fila_salida, col_salida] = matriz_imagen[i, j]
-            col_salida += 1
-        fila_salida += 1
-
-    return matriz_reducida
-
-
-# ---------------------------------------------------------------------------
-# 6. MÉTRICA DE COMPARACIÓN (ERROR CUADRÁTICO MEDIO - MSE)
-# ---------------------------------------------------------------------------
-
-def calcular_diferencia_absoluta(matriz_con_suavizado, matriz_sin_suavizado):
-    """
-    Calcula la diferencia absoluta promedio entre la imagen reducida con suavizado
-    y la imagen reducida sin suavizado.
-
-    ¿Qué recibe?
-        - matriz_con_suavizado (np.ndarray)
-        - matriz_sin_suavizado (np.ndarray)
-
-    ¿Qué operación matemática realiza?
-        - Diferencia = Promedio( | con_suavizado - sin_suavizado | )
-
-    ¿Por qué es necesaria?
-        - Cuantifica numéricamente cuánto difiere la imagen suavizada de la
-          muestra directa (demuestra el impacto del filtro en los números).
-
-    ¿Qué devuelve?
-        - diferencia_promedio (float): Magnitud del cambio en los niveles de gris/color.
-    """
-    diferencia = np.abs(matriz_con_suavizado.astype(np.float64) - matriz_sin_suavizado.astype(np.float64))
-    return float(np.mean(diferencia))
+    # Padding de ceros interno
+    ampliada = np.pad(imagen, ((radio, radio), (radio, radio), (0, 0)), mode='constant')
+    region = ampliada[fila:fila + tamano, columna:columna + tamano]
+    pesos = np.asarray(mascara)[::-1, ::-1]
+    productos = region.astype(np.float64) * pesos[:, :, None]
+    resultado = np.clip(np.rint(productos.sum(axis=(0, 1))), 0, 255).astype(np.uint8)
+    return region, pesos, productos, resultado
