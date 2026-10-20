@@ -19,11 +19,19 @@ def crear_mascara(tipo, tamano, valores=None):
     if tipo == 'Promedio':
         mascara = np.ones((tamano, tamano), dtype=np.float64)
     elif tipo == 'Gaussiana':
-        # Gaussiana 3x3: sigma=0.8493 reproduce aproximadamente [1,2,1].
-        sigma = {3: 0.8493, 5: 1.10, 7: 1.40}[tamano]
-        posiciones = np.arange(tamano) - tamano // 2
-        vector = np.exp(-(posiciones ** 2) / (2 * sigma ** 2))
-        mascara = np.outer(vector, vector)
+        if tamano == 3:
+            # Gaussiana 3x3 exacta de clase: producto exterior [1, 2, 1] x [1, 2, 1] / 16.
+            vector = np.array([1.0, 2.0, 1.0], dtype=np.float64)
+            mascara = np.outer(vector, vector)
+        elif tamano == 5:
+            # Gaussiana 5x5 discreta binomial: [1, 4, 6, 4, 1]
+            vector = np.array([1.0, 4.0, 6.0, 4.0, 1.0], dtype=np.float64)
+            mascara = np.outer(vector, vector)
+        else:
+            sigma = 1.40
+            posiciones = np.arange(tamano) - tamano // 2
+            vector = np.exp(-(posiciones ** 2) / (2 * sigma ** 2))
+            mascara = np.outer(vector, vector)
     elif tipo == 'Personalizada':
         if valores is None:
             raise ValueError('Introduzca los valores de la máscara personalizada.')
@@ -62,13 +70,13 @@ def aplicar_convolucion(imagen, mascara, salto_vertical=1, salto_horizontal=1):
 
     alto, ancho = imagen.shape[:2]
     relleno = tamano // 2
-    # Padding de ceros interno obligatorio
-    ampliada = np.pad(imagen.astype(np.float32),
+    # Padding de ceros interno obligatorio con precisión float64
+    ampliada = np.pad(imagen.astype(np.float64),
                       ((relleno, relleno), (relleno, relleno), (0, 0)), mode='constant')
 
     filas_salida = (alto - 1) // salto_vertical + 1
     columnas_salida = (ancho - 1) // salto_horizontal + 1
-    salida = np.zeros((filas_salida, columnas_salida, 3), dtype=np.float32)
+    salida = np.zeros((filas_salida, columnas_salida, 3), dtype=np.float64)
 
     # Convolución verdadera: invertir los pesos de la máscara. Para las
     # máscaras simétricas (promedio y gaussiana), esta inversión es idéntica.
@@ -177,3 +185,54 @@ def explicar_pixel(imagen, mascara, fila, columna):
     productos = region.astype(np.float64) * pesos[:, :, None]
     resultado = np.clip(np.rint(productos.sum(axis=(0, 1))), 0, 255).astype(np.uint8)
     return region, pesos, productos, resultado
+
+
+def calcular_geometria_panel(lienzo_ancho, lienzo_alto, img_ancho, img_alto, margen_interior=8):
+    """Calcula dimensiones escaladas, centrado y márgenes de la imagen en el lienzo."""
+    if lienzo_ancho <= 0 or lienzo_alto <= 0 or img_ancho <= 0 or img_alto <= 0:
+        return None
+    lw = max(lienzo_ancho - margen_interior, 1)
+    lh = max(lienzo_alto - margen_interior, 1)
+    factor = min(lw / img_ancho, lh / img_alto)
+    vw = max(1, int(img_ancho * factor))
+    vh = max(1, int(img_alto * factor))
+    cx = lienzo_ancho // 2
+    cy = lienzo_alto // 2
+    ox = cx - vw // 2
+    oy = cy - vh // 2
+    return {
+        'factor': factor,
+        'vw': vw,
+        'vh': vh,
+        'cx': cx,
+        'cy': cy,
+        'ox': ox,
+        'oy': oy
+    }
+
+
+def convertir_clic_a_pixel(clic_x, clic_y, lienzo_ancho, lienzo_alto, img_ancho, img_alto, margen_interior=8):
+    """Convierte coordenadas del lienzo a fila y columna en la matriz de la imagen."""
+    geom = calcular_geometria_panel(lienzo_ancho, lienzo_alto, img_ancho, img_alto, margen_interior)
+    if geom is None:
+        return None
+    ox, oy = geom['ox'], geom['oy']
+    vw, vh = geom['vw'], geom['vh']
+    factor = geom['factor']
+
+    if clic_x < ox or clic_x >= ox + vw:
+        return None
+    if clic_y < oy or clic_y >= oy + vh:
+        return None
+
+    columna = int((clic_x - ox) / factor)
+    fila = int((clic_y - oy) / factor)
+    columna = max(0, min(columna, img_ancho - 1))
+    fila = max(0, min(fila, img_alto - 1))
+    return fila, columna
+
+
+def es_posicion_muestreada(fila, columna, salto_v, salto_h):
+    """Determina si un pixel (fila, columna) es muestreado según los saltos."""
+    return (fila % salto_v == 0) and (columna % salto_h == 0)
+

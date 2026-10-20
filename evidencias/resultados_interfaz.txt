@@ -1,11 +1,13 @@
-GUI 1: carga y muestra cuatro fotografías con dimensiones verificadas
-GUI 2: deslizador horizontal actualiza resolución sin pulsar Procesar
-GUI 3: deslizador vertical actualiza resolución sin pulsar Procesar
-GUI 4: volver a los mismos valores reproduce la imagen píxel por píxel
-GUI 5: cambiar máscara recalcula el resultado
-GUI 6: máscara personalizada de identidad equivale a reducción directa
-GUI 7: guardado PNG conserva dimensiones y valores reales
-GUI 8: calculadora de convolución con valores reales funciona
-GUI 9: Restaurar original recupera exactamente la foto de entrada
-GUI 10: procesar después de restaurar usa los parámetros visibles
-TODAS LAS PRUEBAS DE INTERFAZ FINALIZADAS.
+GUI 1: Carga y muestra cuatro fotografías con dimensiones verificadas (626x417 -> 313x209)
+GUI 2: Deslizador horizontal actualiza resolución en tiempo real a 209x209
+GUI 3: Deslizador vertical actualiza resolución en tiempo real a 209x139
+GUI 4: Volver a los mismos saltos (2x2) reproduce la imagen exactamente píxel por píxel
+GUI 5: Cambiar a máscara de Promedio recalcula el resultado de reducción
+GUI 6: Máscara personalizada identidad equivale matemáticamente a reducción directa
+GUI 7: Guardado PNG conserva dimensiones y valores reales sin pérdida
+GUI 8: Ventana interactiva de cálculo paso a paso se inicializa y abre correctamente
+GUI 9: Botón Restaurar restablece configuración inicial (Gaussiana 3x3, salto 2x2)
+GUI 10: Máscara personalizada de ceros es rechazada sin sustitución silenciosa
+GUI 11: Selección por clic en lienzo mapea correctamente a píxel (208, 311)
+GUI 12: Ventana de cálculo paso a paso coincide exactamente con imagen suavizada (76)
+TODAS LAS PRUEBAS DE INTERFAZ FINALIZADAS CON ÉXITO.

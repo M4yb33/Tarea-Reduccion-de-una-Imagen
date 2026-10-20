@@ -1,26 +1,60 @@
-OK — Promedio 3x3 normalizado
-OK — Gaussiana 3x3 ≈ [1 2 1] exterior /16
-OK — Gaussiana 3x3: suma de pesos igual a 1
-OK — Gaussiana 5x5: suma de pesos igual a 1
-OK — Gaussiana 7x7: suma de pesos igual a 1
-OK — Cálculo manual central: suma/16 = 110
-OK — Padding de ceros: esquina 90*4/9=40
-OK — Reflejo mantiene fotografía constante
-OK — Salto 1x1 mantiene las dimensiones
-OK — Salto 2x2: redondeo hacia arriba de 5x7
-OK — Salto vertical 2 y horizontal 3
-OK — Filtrar y saltar da exactamente el mismo resultado
-OK — Reducción directa: solo píxeles originales muestreados
-OK — La máscara se invierte como exige la convolución (no correlación)
-OK — Detalle didáctico de productos reproduce la salida
-OK — Salida de tres canales con enteros de 8 bits
-OK — Paisaje: 626x417 pasa a 313x209 píxeles
-OK — Conservación de dimensiones y conteo exacto de píxeles
-OK — La máscara gaussiana reduce la variación entre píxeles vecinos
-OK — Misma entrada y configuración = misma imagen píxel por píxel
-OK — PNG exportado sin modificar los píxeles
-OK — Patrón alterno: el filtro evita que todos los cuadros se vuelvan negros
-OK — Máscara de suavizado rechaza pesos negativos
+======================================================================
+EJECUTANDO LAS 18 PRUEBAS OBLIGATORIAS DEL TALLER DE IA
+======================================================================
 
-Todas las pruebas matemáticas finalizaron correctamente. Tiempo ejemplo: 12.8 ms.
-Reducción de píxeles: 74.94 %.
+OK - Prueba 1: Padding de ceros en esquina (90*4/9 = 40)
+OK - Prueba 1: Centro mantiene 90 sin verse afectado por el padding
+OK - Prueba 2: Máscara de promedio 3x3 con pesos idénticos (1/9)
+OK - Prueba 2: Suma de pesos de promedio igual a 1.0
+OK - Prueba 3: Gaussiana 3x3 coincide con [1,2,1]x[1,2,1]/16
+OK - Prueba 3: Gaussiana 3x3 normalizada con suma igual a 1.0
+OK - Prueba 3: Gaussiana 5x5 normalizada con suma igual a 1.0
+OK - Prueba 3: Gaussiana 7x7 normalizada con suma igual a 1.0
+OK - Prueba 4: Casillas deshabilitadas para edición en Máscara de Promedio (readonly)
+OK - Prueba 4: Casillas deshabilitadas para edición en Máscara Gaussiana (readonly)
+OK - Prueba 5: Casillas habilitadas para edición en Máscara Personalizada (normal)
+OK - Prueba 6: Permite números decimales y enteros válidos
+OK - Prueba 6: Rechaza letras y números negativos
+OK - Prueba 6: Rechaza notación científica y múltiples puntos
+OK - Prueba 6: Función crear_mascara rechaza pesos negativos
+OK - Prueba 6: Función crear_mascara rechaza suma de pesos igual a cero
+OK - Prueba 6: mascara_desde_interfaz rechaza 9 ceros sin sustituir por promedio
+OK - Prueba 7: Clic dentro de la imagen produce coordenadas válidas
+OK - Prueba 7: Mapeo correcto de clic (250, 200) a píxel central (207, 313)
+OK - Prueba 7: Clic en borde izquierdo mapea a col 0 y fila ~100 sin desfasaje ((99, 0))
+OK - Prueba 8: Clic en margen superior vacío retorna None
+OK - Prueba 8: Clic con coordenada x negativa retorna None
+OK - Prueba 8: Clic más allá del ancho del lienzo retorna None
+OK - Prueba 9: Ejercicio de defensa central suma/16 = 110
+OK - Prueba 9: Cálculo paso a paso coincide exactamente con aplicar_convolucion
+OK - Prueba 9: Coincidencia matemática exacta en fila 106, col 576, canal verde (76 == 76)
+OK - Prueba 10: (0, 0) es posición muestreada en salto 2x2
+OK - Prueba 10: (196, 312) es posición muestreada en salto 2x2
+OK - Prueba 10: (197, 313) NO es posición muestreada en salto 2x2
+OK - Prueba 10: (1, 0) NO es posición muestreada en salto 2x2
+OK - Prueba 11: Salto 2x2 sobre 626x417 produce resolución exacta 313x209
+OK - Prueba 12: Salto vertical 3 y horizontal 4 produce resolución exacta 157x139
+OK - Prueba 13: Reducción directa y con suavizado tienen idénticas dimensiones (209x313x3)
+OK - Prueba 13: Reducción asimétrica directa y con suavizado coinciden en tamaño
+OK - Prueba 14: Salida conserva los 3 canales RGB con tipo de dato uint8
+OK - Prueba 14: Convolución preserva valores independientes de cada canal R, G y B
+OK - Prueba 15: Botón Restaurar restablece máscara Gaussiana
+OK - Prueba 15: Botón Restaurar restablece tamaño de máscara a 3x3
+OK - Prueba 15: Botón Restaurar restablece saltos horizontal y vertical a 2
+OK - Prueba 16: Archivo PNG exportado tiene resolución exacta 313x209
+OK - Prueba 16: PNG exportado contiene la matriz matemática real píxel por píxel
+OK - Prueba 17: Mismos parámetros producen exactamente la misma matriz de salida
+OK - Prueba 18: La matriz reducida real mantiene 313x209 sin ser alterada por el escalado de visualización
+OK - Prueba 18: Los datos numéricos de los píxeles no se modifican al generar la vista en pantalla
+OK - Complementaria: El suavizado previo mitiga el aliasing en patrones de alta frecuencia
+
+======================================================================
+RESUMEN DE VERIFICACIÓN
+======================================================================
+Original:    626 x 417 px (261,042 píxeles)
+Reducida:    313 x 209 px (65,417 píxeles)
+Reducción:   74.94 %
+Tiempo test: 113.0 ms
+======================================================================
+LAS 18 PRUEBAS OBLIGATORIAS FINALIZARON CON ÉXITO (CÓDIGO DE SALIDA 0).
+======================================================================

@@ -1,148 +1,101 @@
-# Taller de Inteligencia Artificial: suavizado y reducción por convolución
+# Taller de Inteligencia Artificial: Suavizado y Reducción de Imágenes
 
+**Universidad Técnica de Ambato — Segundo Parcial**
 **Proyecto didáctico, funcional y fácil de explicar para dos estudiantes.**
 
-El programa permite cargar fotografías RGB, elegir una máscara impar (3×3, 5×5 o 7×7), introducir valores propios y seleccionar cuántas filas y columnas avanzar. Se obtienen cuatro vistas: imagen original, imagen suavizada, reducción directa sin filtro y reducción con suavizado. Las imágenes procesadas se crean con código propio; ninguna función automática realiza el filtrado o la reducción.
+El software permite cargar fotografías RGB, aplicar máscaras impares de convolución (3×3, 5×5 o 7×7), editar pesos personalizados y reducir la resolución controlando los saltos (*strides*) horizontal y vertical. Se presentan cuatro vistas comparativas sincronizadas:
+1. **Imagen original** (con selección de píxel mediante clic interactivo).
+2. **Imagen suavizada** (convolución completa a resolución 1×1).
+3. **Reducción directa** (submuestreo sin filtro, como referencia de aliasing).
+4. **Reducción con suavizado** (convolución manual + saltos).
 
-## 1. Instalación y ejecución
+Ninguna función prediseñada realiza el filtrado o la reducción (`cv2.resize`, `cv2.GaussianBlur`, `PIL.Image.resize` no se usan para el cálculo matemático). Todo el procesamiento matemático se implementa con bucles explícitos y NumPy en `procesamiento.py`.
 
-Se requiere **Python 3.10 o posterior**.
+---
 
-Desde la carpeta del proyecto:
+## 1. Instalación y Ejecución
+
+Se requiere **Python 3.10 o posterior** con `numpy` y `pillow`.
 
 ```bash
 python -m pip install -r requirements.txt
 python main.py
 ```
 
-El programa carga automáticamente `imagenes/paisaje.png` si está disponible. Se puede seleccionar cualquier otra fotografía JPG/PNG usando **Cargar imagen**.
+El programa carga automáticamente `imagenes/paisaje.png` si está disponible. Se puede cargar cualquier otra fotografía PNG, JPG o BMP con el botón **Cargar imagen**.
 
-Para ejecutar comprobaciones:
-
+### Ejecución de Pruebas Automatizadas:
 ```bash
 python pruebas.py
 ```
+Ejecuta las **18 pruebas matemáticas y de interfaz obligatorias** del proyecto, finalizando con código de salida 0.
 
-En Linux sin escritorio, las pruebas de GUI requieren `xvfb-run`:
-
+Para pruebas automatizadas de la interfaz Tkinter:
 ```bash
-xvfb-run -a python prueba_interfaz.py
+python prueba_interfaz.py
 ```
 
-En Windows, con el escritorio iniciado, basta `python prueba_interfaz.py`.
+---
 
-## 2. Qué hace cada control
+## 2. Controles de la Interfaz
 
-| Control | Función |
+| Control | Descripción |
 |---|---|
-| Máscara **Gaussiana** | Da mayor peso a los píxeles cercanos al centro para suavizar |
-| Máscara **Promedio** | Todos los píxeles de la ventana tienen igual peso |
-| Máscara **Personalizada** | El usuario escribe una matriz de pesos no negativos |
-| Tamaño 3, 5 o 7 | Determina cuántos vecinos participan en el cálculo |
-| Salto horizontal | Avance entre columnas de salida (1–8) |
-| Salto vertical | Avance entre filas de salida (1–8) |
-| **Ceros** | Añade un borde de ceros, como en la clase |
-| **Reflejo** | Replica los valores cercanos mediante reflejo para evitar bordes oscuros |
-| **Ver cálculo** | Explica con números de la foto la suma de los productos de la máscara |
-| **Restaurar original** | Vuelve a mostrar la fotografía intacta en las cuatro vistas |
-| **Procesar** | Aplica los ajustes visibles |
-| **Guardar PNG** | Exporta solo los píxeles reales de la imagen reducida |
+| **Cargar imagen** | Abre una fotografía RGB sin alterar sus dimensiones originales. |
+| **Procesar** | Único botón de procesamiento: normaliza pesos, convoluciona, actualiza las 4 vistas y registra resultados en `resultados_procesamiento.csv`. |
+| **Restaurar** | Restablece la fotografía original y los parámetros por defecto (Gaussiana 3×3, salto 2×2). |
+| **Guardar PNG** | Exporta la matriz reducida exacta a un archivo PNG sin pérdidas ni escalados artificiales. |
+| **Clic en Imagen Original** | Mapeo unificado mediante `calcular_geometria_panel()` que sincroniza el margen interior de 8 px del lienzo con la matriz real de la foto, garantizando selección exacta sin desfasajes de filas ni columnas. |
+| **Máscara Gaussiana** | Pesos exactos generados mediante el producto exterior $[1, 2, 1] \times [1, 2, 1] / 16.0$ para 3×3. Campos de solo lectura. |
+| **Máscara Promedio** | Pesos uniformes normalizados ($1/K^2$). Campos de solo lectura. |
+| **Máscara Personalizada** | **Única máscara editable**: cuadrícula independiente con validación estricta (rechaza entradas vacías, negativas o con suma cero sin sustitución silenciosa) y presets rápidos (`1s`, `1-2-1`, `Centro 5`). |
+| **Saltos de Reducción** | Deslizadores horizontal y vertical (1 a 8). Actualizan la reducción en tiempo real. |
+| **Resultados del Procesamiento** | Tarjeta lateral compacta con resolución original, reducida, conteo total de píxeles, porcentaje de reducción y tiempo de cálculo en ms. |
+| **Ver cálculo paso a paso** | Abre la ventana didáctica para inspeccionar $I \times W = P \rightarrow \text{Suma} \rightarrow \text{Píxel de salida}$ calculada con precisión flotante completa (`float64`), coincidiendo al 100% con la convolución general. |
 
-**Nota:** al seleccionar `Personalizada`, la caja de pesos se vuelve editable. Se escribe una fila por línea, con los números separados por espacios. Por ejemplo:
+---
 
-```text
-1 1 1
-1 4 1
-1 1 1
-```
+## 3. Fundamento Matemático
 
-El programa divide todos los pesos entre su suma (10). No acepta pesos negativos, para mantener la actividad enfocada en suavizado.
+1. **Lectura RGB:** Una imagen se representa como un tensor NumPy de dimensiones `(alto, ancho, 3)` con tipo `uint8`.
+2. **Padding de Ceros:** Se añade un borde de ceros alrededor de la imagen de grosor $p = (K - 1) / 2$ para centrar el kernel en los bordes.
+   - Máscara 3×3: $p = 1$.
+   - Máscara 5×5: $p = 2$.
+   - Máscara 7×7: $p = 3$.
+   *Nota:* El padding de ceros puede atenuar u oscurecer ligeramente las intensidades en los bordes extremos, lo cual es matemáticamente normal y esperado.
+3. **Convolución:** Se invierten los coeficientes de la máscara $W[::-1, ::-1]$ (en máscaras simétricas es idéntica). Se recorre cada vecindad multiplicando el píxel por el peso y sumando los productos.
+4. **Muestreo por Saltos (Strides):** Los centros de convolución avanzan de $s_v$ en $s_v$ filas y de $s_h$ en $s_h$ columnas.
+   - Dimensiones resultantes:
+     $$H_{\text{salida}} = \left\lfloor\frac{H - 1}{s_v}\right\rfloor + 1, \qquad W_{\text{salida}} = \left\lfloor\frac{W - 1}{s_h}\right\rfloor + 1$$
+5. **Porcentaje de Reducción:**
+   $$R = \left(1 - \frac{N_{\text{final}}}{N_{\text{original}}}\right) \times 100\%$$
+   Para la imagen de prueba `626 × 417` con salto `2×2`:
+   $$\text{Original: } 261.042 \text{ px} \longrightarrow \text{Final: } 313 \times 209 = 65.417 \text{ px} \quad (-74,94\%)$$
 
-## 3. La idea matemática en cinco pasos
+---
 
-1. **Leer la fotografía.** Una fotografía RGB se guarda en una matriz de `alto × ancho × 3`.
-2. **Crear la máscara.** Por ejemplo, la gaussiana 3×3: `[[1,2,1],[2,4,2],[1,2,1]] / 16`.
-3. **Agregar padding.** Una máscara 3×3 usa un borde de un píxel; una máscara 5×5 usa dos.
-4. **Aplicar la convolución.** Para cada posición se multiplica el píxel de la vecindad por el peso correspondiente, se suman los productos y se redondea el resultado. El algoritmo recorre las posiciones definidas por los saltos.
-5. **Guardar la matriz reducida.** Un salto 2×2 toma un resultado por cada dos posiciones verticales y horizontales, después de combinar la vecindad con la máscara.
+## 4. Ventana de Cálculo Paso a Paso
 
-La convolución (para un canal) se define como:
+Titulada **Cálculo paso a paso — Convolución**, permite:
+- Seleccionar coordenadas `Fila`, `Columna` y canal (`Rojo`, `Verde`, `Azul`).
+- Comprobar la **relación con el salto**: indica si la posición seleccionada forma parte del submuestreo de la reducción ($fila \bmod s_v == 0$ y $columna \bmod s_h == 0$).
+- **Matriz de Píxeles (I):** Carga los valores reales de la vecindad y permite editarlos para ejercicios matemáticos locales sin alterar la imagen global.
+- **Matriz de Máscara (W):** Muestra los pesos normalizados (solo lectura para Gaussiana/Promedio; editable para Personalizada).
+- **Matriz de Productos (I × W):** Muestra cada producto individual y la suma ponderada $S = \sum I_{ij} W_{ij}$, junto con el píxel final redondeado y acotado en `[0, 255]`.
+- Botón **Aplicar máscara a la imagen**: Si se modificaron pesos personalizados, permite confirmarlos y aplicarlos a la fotografía completa.
 
-\[
-G(i,j)=\sum_{u=-r}^{r}\sum_{v=-r}^{r} F(i-u,j-v)\,M(u,v),
-\quad r=\frac{K-1}{2}.
-\]
+---
 
-Los pesos se invierten para respetar la definición matemática. Esto no altera máscaras simétricas como gaussiana o promedio.
-
-La dimensión reducida con padding y centros desde cero es:
-
-\[
-H_{salida}=\left\lceil H/s_v\right\rceil,\qquad
-W_{salida}=\left\lceil W/s_h\right\rceil.
-\]
-
-La reducción de cantidad de píxeles es:
-
-\[
-R=100\left(1-\frac{H_{salida}W_{salida}}{HW}\right)\%.
-\]
-
-### Ejemplo comprobado
-
-- Imagen original: **626 × 417 = 261.042 píxeles**.
-- Máscara: **gaussiana 3×3**.
-- Salto horizontal: **2**.
-- Salto vertical: **2**.
-- Imagen reducida: **313 × 209 = 65.417 píxeles**.
-- Reducción de cantidad de píxeles: **74,94 %**.
-
-La proporción de píxeles no equivale necesariamente a la reducción del tamaño del archivo en bytes.
-
-## 4. Por qué hay dos tipos de reducción
-
-**Directa (sin filtro):** selecciona un píxel de cada bloque de posiciones; conserva dimensiones de salida, pero puede provocar aliasing en texturas o estructuras finas.
-
-**Con suavizado (resultado principal):** combina los vecinos mediante una máscara antes de efectuar los saltos. Generalmente reduce el aliasing, a costa de cierto desenfoque. No se garantiza que la imagen conserve toda su información: reducir resolución siempre descarta muestras.
-
-Para imágenes de muchos detalles y saltos grandes, conviene una máscara mayor y comparar los resultados. También se recomienda evaluar la opción de borde **Reflejo** si el padding de ceros crea un borde oscuro visible.
-
-## 5. Cómo se logró una interfaz fluida sin complicar la matemática
-
-El algoritmo principal está en `procesamiento.py` y solo contiene **dos bucles `for` sobre la máscara**. Para cada peso, NumPy multiplica una región de píxeles de una sola vez. Es matemáticamente equivalente a multiplicar y sumar las vecindades una por una, pero evita bucles lentos sobre cientos de miles de píxeles.
-
-**No se emplean** `cv2.resize`, `PIL.Image.resize` para el algoritmo, `cv2.GaussianBlur`, `cv2.filter2D`, `scipy.ndimage.convolve`, `scipy.ndimage.zoom` ni ecualización automática.
-
-**Única excepción para la visualización:** `Image.resize()` se utiliza dentro de `actualizar_panel()` para adaptar la vista previa al espacio de Tkinter. No cambia ni recalcula la imagen original, suavizada o reducida, y **jamás se utiliza para generar el PNG exportado**. Esta distinción se puede señalar durante la defensa.
-
-## 6. Organización
+## 5. Estructura del Código
 
 ```text
-Taller_Suavizado_Reduccion_Python/
-  main.py                 # Ventanas, botones, imágenes y controles
-  procesamiento.py        # Máscara, padding, convolución y saltos
-  pruebas.py              # Cálculos y pruebas matemáticas
-  prueba_interfaz.py      # Pruebas reales de Tkinter
-  requirements.txt        # NumPy y Pillow
-  README.md               # Esta explicación
-  DEFENSA_DOS_INTEGRANTES.md
-  imagenes/
-    paisaje.png
-  evidencias/
-    captura_interfaz.png
-    comparacion_cuatro_resultados.png
-    original.png
-    suavizada.png
-    reduccion_directa.png
-    reduccion_suavizada.png
+Tarea-Reduccion-de-una-Imagen/
+├── main.py                  # Interfaz gráfica Tkinter y eventos de usuario
+├── procesamiento.py         # Funciones matemáticas de convolución, saltos y métricas
+├── pruebas.py               # Las 18 pruebas obligatorias (código de salida 0)
+├── prueba_interfaz.py       # Pruebas automatizadas de la GUI Tkinter
+├── DEFENSA_DOS_INTEGRANTES.md # Guía de estudio y guion para los dos estudiantes
+├── requirements.txt         # Dependencias mínimas (numpy, pillow)
+├── imagenes/                # Fotografías de prueba (paisaje.png, paisaje.jpg)
+└── evidencias/              # Capturas y resultados verificables generados
 ```
-
-La ventana requiere un entorno gráfico de escritorio. No hay bases de datos, API, servidor, frameworks web ni clases creadas por el proyecto.
-
-## 7. Limitaciones y transparencia
-
-- Las reducciones por saltos grandes pueden presentar aliasing incluso con una máscara 7×7.
-- El padding de ceros puede oscurecer los límites; el reflejo es una alternativa opcional.
-- Los resultados se calculan con `float32` y se redondean a `uint8`.
-- El tiempo mostrado corresponde al cálculo en la computadora que ejecuta el programa, no a una promesa fija de tiempo real.
-- La calidad perceptual depende de la fotografía. El programa ofrece comparación directa, no una medición universal de belleza o calidad.
