@@ -264,8 +264,8 @@ def actualizar_mascara(*args):
         fmt = lambda v: f'{v:.3f}'
     else:  # 7x7
         px, py = 1, 1
-        w_col_pers, f_pers = 4, ('Consolas', 8, 'bold')
-        w_col_ro, f_ro = 4, ('Consolas', 7)
+        w_col_pers, f_pers = 5, ('Consolas', 8, 'bold')
+        w_col_ro, f_ro = 5, ('Consolas', 7)
         fmt = lambda v: f'{v:.3f}'
 
     if tipo == 'Personalizada':
