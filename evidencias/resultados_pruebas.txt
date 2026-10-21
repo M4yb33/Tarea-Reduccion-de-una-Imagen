@@ -59,7 +59,7 @@ RESUMEN DE VERIFICACIÓN
 Original:    626 x 417 px (261,042 píxeles)
 Reducida:    313 x 209 px (65,417 píxeles)
 Reducción:   74.94 %
-Tiempo test: 18.9 ms
+Tiempo test: 13.6 ms
 ======================================================================
 LAS 18 PRUEBAS OBLIGATORIAS FINALIZARON CON ÉXITO (CÓDIGO DE SALIDA 0).
 ======================================================================

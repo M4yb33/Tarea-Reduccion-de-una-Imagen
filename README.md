@@ -33,7 +33,7 @@ Para pruebas automatizadas integrales de la interfaz Tkinter y del cálculo inte
 ```bash
 python prueba_interfaz.py
 ```
-Ejecuta las **19 pruebas de interfaz**, validando visibilidad de 7×7 sin recorte, Casos A al G de sincronización de cálculo paso a paso, normalización de pesos, precisión de clics y las 3 vistas.
+Ejecuta las **20 pruebas de interfaz**, validando visibilidad de 7×7 sin recorte, Casos A al G de sincronización de cálculo paso a paso, normalización de pesos, precisión de clics, presets ('1-2-1' en 7×7) y las 3 vistas.
 
 Para regenerar evidencias y capturas actualizadas:
 ```bash
@@ -100,7 +100,7 @@ Tarea-Reduccion-de-una-Imagen/
 ├── main.py                  # Interfaz Tkinter simplificada a 3 vistas y eventos
 ├── procesamiento.py         # Convolución manual, saltos, normalización y métricas
 ├── pruebas.py               # Las 18 pruebas obligatorias + equivalencias (exit code 0)
-├── prueba_interfaz.py       # Las 15 pruebas de Tkinter y cálculo paso a paso (exit code 0)
+├── prueba_interfaz.py       # Las 20 pruebas de Tkinter y cálculo paso a paso (exit code 0)
 ├── generar_evidencias.py    # Generador automatizado de capturas y reportes
 ├── DEFENSA_DOS_INTEGRANTES.md # Guía de estudio y guion de exposición para 2 estudiantes
 ├── requirements.txt         # Dependencias mínimas (numpy, pillow)

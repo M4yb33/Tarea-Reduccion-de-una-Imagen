@@ -67,10 +67,10 @@ Al utilizar las proporciones de visualización real, un clic en el borde izquier
 
 ### Pregunta 12. ¿Cómo se garantizó que la matriz 7×7 quepa completa en el panel lateral sin recortes?
 Se configuraron dimensiones dinámicas en [`actualizar_mascara()`](file:///f:/UTA/OCTAVO/INTELIGENCIA%20ARTIFICIAL/2p/deberes/Tarea-Reduccion-de-una-Imagen/main.py#L216) según el tamaño del kernel:
-- **3×3:** ancho 6, fuente `Consolas 9`, padding 2 px.
-- **5×5:** ancho 5, fuente `Consolas 8`, padding 1 px.
-- **7×7:** ancho 4 (solo lectura, 3 decimales) y 3 (editable), fuente `Consolas 7/8`, padding 1 px.
-Con este ajuste, la matriz 7×7 requiere un ancho de tan solo 182 px, alojándose holgadamente en el contenedor lateral de 308 px (`sb` de 330 px). Todas las 49 casillas son 100% visibles y legibles, incluso con escalados altos de DPI en Windows.
+- **3×3:** ancho 5 (editable) y 6 (solo lectura), fuente `Consolas 10/9`, padding 2 px.
+- **5×5:** ancho 4 (editable) y 5 (solo lectura), fuente `Consolas 9/8`, padding 1 px.
+- **7×7:** ancho 5 (`w_col_pers = 5`, `w_col_ro = 5`), fuentes `Consolas 8` (negrita) y `Consolas 7`, padding 1 px.
+Con este ajuste, la matriz 7×7 requiere un ancho de tan solo 217 px en solo lectura y 252 px en personalizada, alojándose holgadamente en el contenedor lateral de 308 px (`sb` de 330 px). Todas las 49 casillas son 100% visibles y los números decimales (como `0.020` o enteros como `400`) se leen completos sin truncarse ni requerir desplazamiento, incluso con escalados altos de DPI en Windows o en resoluciones mínimas de 1040×700.
 
 ### Pregunta 13. ¿Cómo se sincroniza la ventana de cálculo paso a paso al cambiar la máscara o la imagen?
 Si la ventana de cálculo está abierta y el usuario cambia el tamaño o tipo de máscara en la ventana principal, el sistema detecta el cambio, cierra de forma segura la ventana anterior limpiando callbacks, y la reabre automáticamente con el nuevo tamaño (por ejemplo de 3×3 a 7×7 con 49 celdas) preservando el píxel seleccionado.
@@ -141,4 +141,4 @@ python pruebas.py
 python prueba_interfaz.py
 ```
 - `pruebas.py`: ejecuta con éxito las **18 pruebas matemáticas obligatorias** más las pruebas de equivalencia con salida 0.
-- `prueba_interfaz.py`: ejecuta con éxito las **19 pruebas de interfaz y sincronización**, validando las 3 vistas, visibilidad completa de matriz 7×7 sin recorte, Casos A al G de sincronización de cálculo paso a paso, normalización, clics en bordes y exportación.
+- `prueba_interfaz.py`: ejecuta con éxito las **20 pruebas de interfaz y sincronización**, validando las 3 vistas, visibilidad completa de matriz 7×7 sin recorte, Casos A al G de sincronización de cálculo paso a paso, normalización, clics en bordes, presets binomiales ('1-2-1' en 7×7 con centro 400) y exportación.

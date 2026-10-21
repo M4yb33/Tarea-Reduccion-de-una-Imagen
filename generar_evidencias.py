@@ -92,25 +92,29 @@ def generar_imagenes_procesamiento():
     Image.fromarray(img_dir).save(EVIDENCIAS_DIR / 'reduccion_directa.png')
     Image.fromarray(img_red).save(EVIDENCIAS_DIR / 'reduccion_suavizada.png')
 
-    # Mosaico comparativo de tres vistas (Original grande a la izquierda, reducciones a la derecha)
+    # Mosaico comparativo de tres vistas (Original grande a la izquierda, reducciones a la derecha sin deformación)
     ancho_orig, alto_orig = 626, 417
     ancho_red, alto_red = 313, 209
-    ancho_total = ancho_orig + ancho_orig + 40
-    alto_total = alto_orig + 60
+    ancho_total = ancho_orig + ancho_red + 50
+    alto_total = max(alto_orig + 60, alto_red * 2 + 90)
     mosaico = Image.new('RGB', (ancho_total, alto_total), color=(240, 243, 248))
     dibujo = ImageDraw.Draw(mosaico)
 
     im_o = Image.fromarray(img_orig)
-    im_d = Image.fromarray(img_dir).resize((ancho_orig, alto_orig // 2 - 10), Image.Resampling.LANCZOS)
-    im_r = Image.fromarray(img_red).resize((ancho_orig, alto_orig // 2 - 10), Image.Resampling.LANCZOS)
+    im_d = Image.fromarray(img_dir)  # Conserva relación 313x209 exacta sin distorsión
+    im_r = Image.fromarray(img_red)  # Conserva relación 313x209 exacta sin distorsión
+
+    x_der = ancho_orig + 30
+    y_r1 = 35
+    y_r2 = y_r1 + alto_red + 25
 
     mosaico.paste(im_o, (15, 35))
-    mosaico.paste(im_d, (ancho_orig + 25, 35))
-    mosaico.paste(im_r, (ancho_orig + 25, alto_orig // 2 + 45))
+    mosaico.paste(im_d, (x_der, y_r1))
+    mosaico.paste(im_r, (x_der, y_r2))
 
-    dibujo.text((15, 12), '1. IMAGEN ORIGINAL (626x417 px - 261,042 píxeles)', fill=(24, 36, 58))
-    dibujo.text((ancho_orig + 25, 12), '2. REDUCCIÓN DIRECTA (313x209 px - Sin filtro: Aliasing)', fill=(180, 83, 9))
-    dibujo.text((ancho_orig + 25, alto_orig // 2 + 25), '3. REDUCCIÓN CON SUAVIZADO (313x209 px - Convolución manual)', fill=(5, 150, 105))
+    dibujo.text((15, 14), '1. IMAGEN ORIGINAL (626x417 px - 261,042 píxeles)', fill=(24, 36, 58))
+    dibujo.text((x_der, 14), '2. REDUCCIÓN DIRECTA (313x209 px - Sin filtro: Aliasing)', fill=(180, 83, 9))
+    dibujo.text((x_der, y_r2 - 18), '3. REDUCCIÓN CON SUAVIZADO (313x209 px - Convolución manual)', fill=(5, 150, 105))
 
     mosaico.save(EVIDENCIAS_DIR / 'comparacion_tres_resultados.png')
     print('[OK] Mosaico de 3 vistas y las 3 imágenes generadas en evidencias/')
