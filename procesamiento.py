@@ -11,6 +11,62 @@ from datetime import datetime
 import numpy as np
 
 
+def aplicar_ruido(imagen, tipo='Sin ruido', intensidad=0.0, semilla=2026):
+    """Devuelve una copia RGB con ruido artificial equivalente a ``imnoise``.
+
+    Para ruido gaussiano, ``intensidad`` representa la varianza sobre la escala
+    normalizada [0, 1]. Para sal y pimienta representa la densidad de pÃ­xeles
+    alterados. Un valor cercano a 1 degrada casi toda la imagen.
+    """
+    if imagen.ndim != 3 or imagen.shape[2] != 3 or imagen.dtype != np.uint8:
+        raise ValueError('Se espera una imagen RGB (alto, ancho, 3) de tipo uint8.')
+    if tipo not in ('Sin ruido', 'Gaussiano', 'Sal y pimienta'):
+        raise ValueError('Seleccione Sin ruido, Gaussiano o Sal y pimienta.')
+    if not 0.0 <= float(intensidad) <= 1.0:
+        raise ValueError('La intensidad del ruido debe estar entre 0 y 1.')
+
+    intensidad = float(intensidad)
+    if tipo == 'Sin ruido' or intensidad == 0.0:
+        return imagen.copy()
+
+    generador = np.random.default_rng(semilla)
+    if tipo == 'Gaussiano':
+        normalizada = imagen.astype(np.float64) / 255.0
+        ruido = generador.normal(0.0, np.sqrt(intensidad), size=imagen.shape)
+        return np.clip(np.rint((normalizada + ruido) * 255.0), 0, 255).astype(np.uint8)
+
+    salida = imagen.copy()
+    mascara = generador.random(imagen.shape[:2]) < intensidad
+    valores = generador.integers(0, 2, size=imagen.shape[:2], dtype=np.uint8) * 255
+    salida[mascara] = valores[mascara, None]
+    return salida
+
+
+def aplicar_filtro_moda(imagen, tamano=3, salto_vertical=1, salto_horizontal=1):
+    """Filtra RGB por moda de cada canal usando vecindades cuadradas y padding cero."""
+    if imagen.ndim != 3 or imagen.shape[2] != 3 or imagen.dtype != np.uint8:
+        raise ValueError('Se espera una imagen RGB (alto, ancho, 3) de tipo uint8.')
+    if tamano not in (3, 5, 7):
+        raise ValueError('El filtro de moda debe ser de 3x3, 5x5 o 7x7.')
+    if salto_vertical < 1 or salto_horizontal < 1:
+        raise ValueError('Los saltos deben ser enteros positivos.')
+
+    alto, ancho = imagen.shape[:2]
+    radio = tamano // 2
+    ampliada = np.pad(imagen, ((radio, radio), (radio, radio), (0, 0)), mode='constant')
+    filas_salida = (alto - 1) // salto_vertical + 1
+    columnas_salida = (ancho - 1) // salto_horizontal + 1
+    salida = np.empty((filas_salida, columnas_salida, 3), dtype=np.uint8)
+
+    for fila_salida, fila in enumerate(range(0, alto, salto_vertical)):
+        for columna_salida, columna in enumerate(range(0, ancho, salto_horizontal)):
+            vecindad = ampliada[fila:fila + tamano, columna:columna + tamano]
+            for canal in range(3):
+                valores, conteos = np.unique(vecindad[:, :, canal], return_counts=True)
+                salida[fila_salida, columna_salida, canal] = valores[np.argmax(conteos)]
+    return salida
+
+
 def crear_mascara(tipo, tamano, valores=None):
     """Construye una máscara normalizada de dimensiones impares."""
     if tamano not in (3, 5, 7):
@@ -241,4 +297,3 @@ def convertir_clic_a_pixel(clic_x, clic_y, lienzo_ancho, lienzo_alto, img_ancho,
 def es_posicion_muestreada(fila, columna, salto_v, salto_h):
     """Determina si un pixel (fila, columna) es muestreado según los saltos."""
     return (fila % salto_v == 0) and (columna % salto_h == 0)
-

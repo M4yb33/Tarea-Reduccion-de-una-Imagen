@@ -11,7 +11,8 @@ from PIL import Image, ImageTk
 from procesamiento import (crear_mascara, aplicar_convolucion,
                             reducir_sin_suavizado, calcular_datos, explicar_pixel,
                             exportar_metricas_csv, calcular_geometria_panel,
-                            convertir_clic_a_pixel, es_posicion_muestreada)
+                            convertir_clic_a_pixel, es_posicion_muestreada,
+                            aplicar_ruido, aplicar_filtro_moda)
 
 # Configuración visual y paleta moderna
 FONDO, BLANCO, TEXTO, SECUNDARIO = '#eef2f7', '#ffffff', '#18243a', '#64748b'
@@ -23,7 +24,7 @@ matriz_personalizada_guardada = [list(f) for f in MATRIZ_PERSONALIZADA_DEFECTO]
 
 # Estado global de imágenes y geometría
 raiz = None
-imagen_original = imagen_reducida = imagen_directa = None
+imagen_base = imagen_original = imagen_reducida = imagen_directa = None
 mascara_actual = datos_actuales = None
 ruta_actual = ''
 pixel_seleccionado = None
@@ -31,6 +32,7 @@ pixel_seleccionado = None
 # Variables de control de la interfaz
 nombre_imagen = tipo_mascara = tamano_mascara = None
 salto_horizontal = salto_vertical = paso_x_etiqueta = paso_y_etiqueta = None
+tipo_ruido = intensidad_ruido = etiqueta_intensidad_ruido = None
 estado = explicacion_mascara = lbl_pixel_info = None
 marco_celdas = marco_herramientas_pers = None
 paneles, fotos_tk, celdas_matriz = {}, {}, []
@@ -80,7 +82,7 @@ def establecer_matriz_codigo(nueva_matriz):
 
 def cargar_imagen(ruta=None):
     """Carga imagen RGB sin alterar su resolución real y la procesa."""
-    global imagen_original, ruta_actual, pixel_seleccionado
+    global imagen_base, imagen_original, ruta_actual, pixel_seleccionado
     if not ruta:
         ruta = filedialog.askopenfilename(
             title='Seleccionar imagen',
@@ -90,7 +92,8 @@ def cargar_imagen(ruta=None):
         return
     try:
         with Image.open(ruta) as f:
-            imagen_original = np.array(f.convert('RGB'), dtype=np.uint8)
+            imagen_base = np.array(f.convert('RGB'), dtype=np.uint8)
+        imagen_original = aplicar_ruido_activo()
         ruta_actual = str(ruta)
         pixel_seleccionado = (imagen_original.shape[0] // 2, imagen_original.shape[1] // 2)
         if nombre_imagen:
@@ -105,6 +108,19 @@ def cargar_imagen(ruta=None):
             mostrar_calculo()
     except Exception as e:
         messagebox.showerror('Error al cargar imagen', str(e))
+
+def aplicar_ruido_activo(*args):
+    """Genera la entrada ruidosa desde la imagen cargada, sin degradarla acumulativamente."""
+    global imagen_original
+    if imagen_base is None:
+        return None
+    tipo = tipo_ruido.get() if tipo_ruido else 'Sin ruido'
+    intensidad = float(intensidad_ruido.get()) if intensidad_ruido else 0.0
+    imagen_original = aplicar_ruido(imagen_base, tipo, intensidad, semilla=2026)
+    if etiqueta_intensidad_ruido:
+        etiqueta_intensidad_ruido.set(f'{intensidad:.2f}')
+    procesar()
+    return imagen_original
 
 def guardar_png():
     """Exporta la matriz reducida real en formato PNG sin distorsiones."""
@@ -132,6 +148,8 @@ def restaurar():
         return
     tipo_mascara.set('Gaussiana')
     tamano_mascara.set('3')
+    tipo_ruido.set('Sin ruido')
+    intensidad_ruido.set(0.0)
     salto_horizontal.set(2)
     salto_vertical.set(2)
     paso_x_etiqueta.set('2')
@@ -139,6 +157,7 @@ def restaurar():
     pixel_seleccionado = (imagen_original.shape[0] // 2, imagen_original.shape[1] // 2)
     if lbl_pixel_info:
         lbl_pixel_info.config(text=f'Píxel seleccionado: fila {pixel_seleccionado[0]}, columna {pixel_seleccionado[1]}')
+    aplicar_ruido_activo()
     actualizar_mascara()
     if estado:
         estado.set('Configuración inicial restaurada (Gaussiana 3x3, salto 2x2).')
@@ -147,6 +166,8 @@ def mascara_desde_interfaz():
     """Obtiene máscara normalizada según las opciones activas."""
     global matriz_personalizada_guardada
     tipo, tam = tipo_mascara.get(), int(tamano_mascara.get())
+    if tipo == 'Moda':
+        return None
     if tipo != 'Personalizada':
         return crear_mascara(tipo, tam)
     valores = []
@@ -222,6 +243,14 @@ def actualizar_mascara(*args):
     else:  # 7x7
         px, py, w_col_pers, f_pers = 1, 1, 5, ('Consolas', 8, 'bold')
         w_col_ro, f_ro, fmt = 5, ('Consolas', 7), lambda v: f'{v:.3f}'
+    if tipo == 'Moda':
+        for w in marco_celdas.winfo_children():
+            w.destroy()
+        celdas_matriz = []
+        marco_herramientas_pers.pack_forget()
+        explicacion_mascara.set('Moda: conserva el valor más frecuente de cada vecindad RGB.')
+        procesar()
+        return
     personalizada = tipo == 'Personalizada'
     m = None if personalizada else crear_mascara(tipo, tam)
     ancho = w_col_pers if personalizada else w_col_ro
@@ -265,9 +294,12 @@ def actualizar_reduccion(*args):
     sx, sy = int(salto_horizontal.get()), int(salto_vertical.get())
     paso_x_etiqueta.set(str(sx))
     paso_y_etiqueta.set(str(sy))
-    masc = mascara_actual if mascara_actual is not None else mascara_desde_interfaz()
     t0 = time.perf_counter()
-    imagen_reducida = aplicar_convolucion(imagen_original, masc, sy, sx)
+    if tipo_mascara.get() == 'Moda':
+        imagen_reducida = aplicar_filtro_moda(imagen_original, int(tamano_mascara.get()), sy, sx)
+    else:
+        masc = mascara_actual if mascara_actual is not None else mascara_desde_interfaz()
+        imagen_reducida = aplicar_convolucion(imagen_original, masc, sy, sx)
     imagen_directa = reducir_sin_suavizado(imagen_original, sy, sx)
     t_ms = (time.perf_counter() - t0) * 1000
     datos_actuales = calcular_datos(imagen_original, imagen_reducida, t_ms)
@@ -382,6 +414,9 @@ def manejar_clic_original(event):
 def mostrar_calculo():
     """Ventana interactiva Cálculo paso a paso — Convolución."""
     global ventana_calculo_actual, callback_actualizar_calculo, callback_actualizar_salto
+    if tipo_mascara.get() == 'Moda':
+        messagebox.showinfo('Filtro de moda', 'El cálculo paso a paso muestra convoluciones. Seleccione Promedio, Gaussiana o Personalizada para usarlo.')
+        return
     if imagen_original is None or mascara_actual is None:
         messagebox.showinfo('Aviso', 'Cargue y procese una imagen primero.')
         return
@@ -652,6 +687,7 @@ def construir_interfaz():
     """Construye controles principales, panel lateral y cuadrícula de 3 vistas."""
     global raiz, nombre_imagen, estado, tipo_mascara, tamano_mascara
     global salto_horizontal, salto_vertical, paso_x_etiqueta, paso_y_etiqueta
+    global tipo_ruido, intensidad_ruido, etiqueta_intensidad_ruido
     global lbl_pixel_info, marco_celdas, marco_herramientas_pers, explicacion_mascara
     global lbl_res_orig, lbl_res_red, lbl_pix_tot, lbl_pct_red, lbl_cfg_masc, lbl_cfg_saltos, lbl_t_proc
     raiz = tk.Tk()
@@ -684,9 +720,9 @@ def construir_interfaz():
                               fg=AZUL, bg=BLANCO)
     lbl_pixel_info.pack(anchor='w', pady=(0, 6))
     # 1. Selector y cuadrícula de máscara
-    tk.Label(sb, text='Máscara de suavizado', font=('Segoe UI', 10, 'bold'), bg=BLANCO).pack(anchor='w')
+    tk.Label(sb, text='Filtro de suavizado', font=('Segoe UI', 10, 'bold'), bg=BLANCO).pack(anchor='w')
     tipo_mascara, tamano_mascara = tk.StringVar(value='Gaussiana'), tk.StringVar(value='3')
-    cb_t = ttk.Combobox(sb, textvariable=tipo_mascara, values=('Gaussiana', 'Promedio', 'Personalizada'), state='readonly')
+    cb_t = ttk.Combobox(sb, textvariable=tipo_mascara, values=('Gaussiana', 'Promedio', 'Moda', 'Personalizada'), state='readonly')
     cb_t.pack(fill='x', pady=2)
     cb_s = ttk.Combobox(sb, textvariable=tamano_mascara, values=('3', '5', '7'), state='readonly')
     cb_s.pack(fill='x', pady=2)
@@ -706,7 +742,23 @@ def construir_interfaz():
     explicacion_mascara = tk.StringVar()
     tk.Label(sb, textvariable=explicacion_mascara, fg=SECUNDARIO, bg=BLANCO, font=('Segoe UI', 8),
              wraplength=290).pack(anchor='w', pady=1)
-    # 2. Deslizadores de saltos (strides)
+    # 2. Ruido artificial de entrada, equivalente a imnoise de MATLAB.
+    tk.Label(sb, text='Ruido artificial (imnoise)', font=('Segoe UI', 10, 'bold'), bg=BLANCO).pack(anchor='w', pady=(4, 0))
+    tipo_ruido = tk.StringVar(value='Sin ruido')
+    intensidad_ruido = tk.DoubleVar(value=0.0)
+    etiqueta_intensidad_ruido = tk.StringVar(value='0.00')
+    cb_ruido = ttk.Combobox(sb, textvariable=tipo_ruido,
+                            values=('Sin ruido', 'Gaussiano', 'Sal y pimienta'), state='readonly')
+    cb_ruido.pack(fill='x', pady=2)
+    fila_ruido = tk.Frame(sb, bg=BLANCO)
+    fila_ruido.pack(fill='x')
+    tk.Label(fila_ruido, text='Intensidad/varianza:', bg=BLANCO, font=('Segoe UI', 8)).pack(side='left')
+    tk.Label(fila_ruido, textvariable=etiqueta_intensidad_ruido, bg=BLANCO,
+             font=('Segoe UI', 9, 'bold'), fg=AZUL).pack(side='right')
+    tk.Scale(sb, from_=0.0, to=1.0, resolution=0.01, orient='horizontal', showvalue=False,
+             variable=intensidad_ruido, command=aplicar_ruido_activo,
+             bg=BLANCO, bd=0, highlightthickness=0).pack(fill='x')
+    # 3. Deslizadores de saltos (strides)
     tk.Label(sb, text='Saltos de reducción', font=('Segoe UI', 10, 'bold'), bg=BLANCO).pack(anchor='w', pady=(4, 0))
     salto_horizontal, salto_vertical = tk.IntVar(value=2), tk.IntVar(value=2)
     paso_x_etiqueta, paso_y_etiqueta = tk.StringVar(value='2'), tk.StringVar(value='2')
@@ -738,7 +790,7 @@ def construir_interfaz():
     mos.grid_rowconfigure(0, weight=1)
     mos.grid_rowconfigure(1, weight=1)
     vistas = [
-        ('original', 'IMAGEN ORIGINAL (Clic para seleccionar píxel)', 0, 0, 2, 1),
+        ('original', 'IMAGEN DE ENTRADA (CON RUIDO)', 0, 0, 2, 1),
         ('directa', 'REDUCCIÓN DIRECTA (SIN SUAVIZADO)', 0, 1, 1, 1),
         ('reducida', 'REDUCCIÓN CON SUAVIZADO', 1, 1, 1, 1)
     ]
@@ -764,6 +816,7 @@ def construir_interfaz():
     tk.Label(pie, textvariable=estado, bg=FONDO, fg=SECUNDARIO, font=('Segoe UI', 8)).pack(anchor='w')
     cb_t.bind('<<ComboboxSelected>>', actualizar_mascara)
     cb_s.bind('<<ComboboxSelected>>', actualizar_mascara)
+    cb_ruido.bind('<<ComboboxSelected>>', aplicar_ruido_activo)
     actualizar_mascara()
     return raiz
 
